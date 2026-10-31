@@ -5,7 +5,8 @@ extends SceneTree
 ## 1. Fighter never reads Input, 2. tension comes through the intent,
 ## 3. Q/E turn twists the chest, 4. the hands touch three drill balls in a row
 ## without the fighter falling, 5. mouse buttons pick which arm the mouse moves,
-## 6. the arms stay calm while holding a guard.
+## 6. the arms stay calm while holding a guard, 7. controller sticks push the
+## hands (muscle arms) without dragging the body.
 
 var failures := 0
 
@@ -76,7 +77,8 @@ func _run() -> void:
 	# PlayerInput: with only the right button held, moving the mouse right on
 	# screen moves the right hand right (camera behind the fighter) and leaves the left alone.
 	p.fighter = f
-	main.cam.yaw = 0.0
+	main.cam.yaw_offset = 0.0
+	main.cam.snap()
 	await process_frame
 	await process_frame
 	var l0 := p.hand_offset[FighterIntent.LEFT]
@@ -89,8 +91,40 @@ func _run() -> void:
 	_check("both buttons + mouse up raise both hands",
 		p.hand_offset[0].y > l0.y + 0.15 and p.hand_offset[1].y > r0.y + 0.15, "")
 
+	# Controller: muscle arms. Right stick right pushes the right hand right,
+	# it stays roughly there after letting go, and the body doesn't get dragged.
+	p.fighter = null
+	var pad: PadInput = main.pad
+	pad.set_physics_process(false)
+	pad.fighter = f
+	var dt := 1.0 / Engine.physics_ticks_per_second
+	var idle: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO]
+	var no: Array[bool] = [false, false]
+	for k in 240:
+		pad.apply_sticks(idle, no, dt)
+		await physics_frame
+	var pel0: Vector3 = f.parts.pelvis.global_position
+	var h0 := _hand_local(f, "r_hand")
+	var push: Array[Vector2] = [Vector2.ZERO, Vector2(1, 0)]
+	for k in 60:
+		pad.apply_sticks(push, no, dt)
+		await physics_frame
+	var moved := _hand_local(f, "r_hand").x - h0.x
+	_check("right stick pushes the right hand right", moved > 0.2, "moved %.2f m in 0.5 s" % moved)
+	for k in 120:
+		pad.apply_sticks(idle, no, dt)
+		await physics_frame
+	var kept := _hand_local(f, "r_hand").x - h0.x
+	_check("hand stays roughly where it was pushed", kept > moved * 0.5, "%.2f m from the guard 1 s later" % kept)
+	var drift: float = (f.parts.pelvis.global_position - pel0).length()
+	_check("pushing an arm doesn't move the body", drift < 0.05 and not f.has_fallen, "pelvis moved %.3f m" % drift)
+
 	print("FAILURES: ", failures)
 	quit(failures)
+
+
+func _hand_local(f: Fighter, hand: String) -> Vector3:
+	return f.heading_basis().inverse() * (f.parts[hand].global_position - f.parts.chest.global_position)
 
 
 func _chest_yaw(f: Fighter) -> float:

@@ -19,6 +19,11 @@ var lead := RIGHT
 ## an inactive arm relaxes to its hanging rest pose.
 var hand_target: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
 var hand_active: Array[bool] = [false, false]
+## Muscle push on each hand, world space, length 0..1 (1 = hand_muscle_force).
+## The push pulls back on the shoulder, so it moves the arm, not the whole body.
+var hand_effort: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
+## How firmly each arm holds its pose, 0 (limp) .. 1 (full strength).
+var arm_tone: Array[float] = [1.0, 1.0]
 ## Hand closed (grip button held). Grabs a grip zone once GripSystem exists.
 var grip: Array[bool] = [false, false]
 
@@ -40,6 +45,8 @@ func reset() -> void:
 	focus = Focus.HANDS
 	lead = RIGHT
 	hand_active = [false, false]
+	hand_effort = [Vector3.ZERO, Vector3.ZERO]
+	arm_tone = [1.0, 1.0]
 	grip = [false, false]
 	weight_shift = Vector2.ZERO
 	turn = 0.0

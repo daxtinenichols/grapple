@@ -141,6 +141,8 @@ func _physics_process(delta: float) -> void:
 	for i in 2:
 		it.hand_target[i] = targets[i]
 		it.hand_active[i] = captured
+		it.hand_effort[i] = Vector3.ZERO
+		it.arm_tone[i] = 1.0
 
 
 ## World hand targets from per-hand offsets in the fighter's heading frame.

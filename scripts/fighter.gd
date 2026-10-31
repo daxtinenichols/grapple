@@ -14,6 +14,8 @@ signal fell
 @export var max_tension := 1.8
 ## How far (degrees) Q/E twists the abdomen and the chest each.
 @export var turn_deg := 25.0
+## Force (N) of a full hand_effort push.
+@export var hand_muscle_force := 170.0
 ## How fast (1/s) the arm IK's copy of the chest follows the real chest.
 @export var ik_chest_rate := 4.0
 ## Arm pose (degrees: flex, twist, out) the arms are built in; see _build.
@@ -261,6 +263,8 @@ func _make_joint(d: Dictionary, parent_rot: Basis) -> void:
 	var entry := {
 		"joint": j, "parent": parent, "child": child, "name": d.name,
 		"target": Quaternion.IDENTITY, "strength": d.strength,
+		# Which arm this joint belongs to (0 left, 1 right), -1 if none.
+		"arm": (0 if d.side < 0 else 1) if d.name.substr(2) in ["upper_arm", "forearm", "hand"] else -1,
 	}
 	joints.append(entry)
 	_joint_by_name[d.name] = entry
@@ -330,6 +334,20 @@ func _apply_intent() -> void:
 			set_target_quat(prefix + "upper_arm", Quaternion.IDENTITY)
 			set_target_quat(prefix + "forearm", Quaternion.IDENTITY)
 			arm_ik[i] = {}
+		_arm_muscle(i)
+
+
+## The muscle push: a force on the hand toward intent.hand_effort, with the
+## equal and opposite force on the shoulder so the body can't push itself along.
+func _arm_muscle(i: int) -> void:
+	var e: Vector3 = intent.hand_effort[i].limit_length(1.0)
+	if e.length_squared() < 0.0001:
+		return
+	var f := e * hand_muscle_force * tension * stamina
+	var hand: RigidBody3D = parts[_arms[i].prefix + "hand"]
+	var chest: RigidBody3D = parts.chest
+	hand.apply_central_force(f)
+	chest.apply_force(-f, chest.global_basis * _arms[i].shoulder)
 
 
 ## Two-bone IK on the hidden target skeleton: works out where the upper arm and
@@ -392,6 +410,8 @@ func _drive_joints() -> void:
 		if angle > 0.0001:
 			v = err.get_axis() * angle * pose_gain
 		var force: float = j.strength * strength_scale
+		if j.arm >= 0:
+			force *= clampf(intent.arm_tone[j.arm], 0.0, 1.0)
 		var jn: Generic6DOFJoint3D = j.joint
 		for axis in 3:
 			_set_axis_param(jn, axis, Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_TARGET_VELOCITY, -v[axis])

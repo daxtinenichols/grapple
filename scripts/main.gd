@@ -4,6 +4,9 @@ extends Node3D
 
 var fighter: Fighter
 var player: PlayerInput
+var pad: PadInput
+## True while the controller drives the fighter, false for mouse and keyboard.
+var pad_mode := false
 var dev: DevKeys
 var overlay: DebugOverlay
 var hud: Label
@@ -64,6 +67,12 @@ func _build_world() -> void:
 	player.camera = cam
 	add_child(player)
 
+	pad = PadInput.new()
+	pad.name = "PadInput"
+	pad.camera = cam
+	add_child(pad)
+	_set_pad_mode(not Input.get_connected_joypads().is_empty())
+
 	dev = DevKeys.new()
 	dev.name = "DevKeys"
 	dev.camera = cam
@@ -85,10 +94,25 @@ func _spawn_fighter() -> void:
 	add_child(fighter)
 	overlay.fighter = fighter
 	player.fighter = fighter
+	pad.fighter = fighter
 	dev.fighter = fighter
 	dev.clear_drill()
 	cam.target = fighter
 	cam.snap()
+
+
+## Whichever device was touched last drives the fighter.
+func _input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.4):
+		_set_pad_mode(true)
+	elif event is InputEventMouseButton or (event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED):
+		_set_pad_mode(false)
+
+
+func _set_pad_mode(on: bool) -> void:
+	pad_mode = on
+	pad.set_physics_process(on)
+	player.set_physics_process(not on)
 
 
 func _process(_delta: float) -> void:
@@ -96,8 +120,12 @@ func _process(_delta: float) -> void:
 		var it := fighter.intent
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 		var arms := player.controlled()
-		hud.text = "%s\nhold left / right mouse + move: move that arm (both buttons: both arms)   + wheel: reach\nno button: mouse turns the camera, wheel zooms   Q/E turn   WASD weight   Ctrl tense   Tab swap lead   Shift hips   Space legs\nF shove   G big shove   R reset   M reach drill   Esc free mouse\n\nmoving %s   weight (%.1f, %.1f)   base margin %.2f m   assist %.0f%%   tension %.1f   %s" % [
-			"" if captured else ">>> click the window to take the mouse <<<",
-			("both arms" if arms[0] and arms[1] else "left arm" if arms[0] else "right arm" if arms[1] else "camera"),
+		var help := "controller: sticks push the hands   hold LB/RB: stick pushes / pulls   LT/RT grip   A tense   X/B turn   D-pad camera   Back reset" if pad_mode else \
+			"%s\nhold left / right mouse + move: move that arm (both buttons: both arms)   + wheel: reach\nno button: mouse turns the camera, wheel zooms   Q/E turn   WASD weight   Ctrl tense" % [
+			"" if captured else ">>> click the window to take the mouse (or pick up the controller) <<<"]
+		hud.text = "%s\nF shove   G big shove   R reset   M reach drill   Esc free mouse\n\n%s   grips %s %s   weight (%.1f, %.1f)   base margin %.2f m   assist %.0f%%   tension %.1f   %s" % [
+			help,
+			"controller" if pad_mode else ("moving both arms" if arms[0] and arms[1] else "moving left arm" if arms[0] else "moving right arm" if arms[1] else "moving camera"),
+			"L" if it.grip[0] else "-", "R" if it.grip[1] else "-",
 			it.weight_shift.x, it.weight_shift.y,
 			fighter.base_margin, fighter.assist * 100.0, fighter.tension, dev.drill_status()]

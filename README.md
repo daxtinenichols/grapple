@@ -7,6 +7,27 @@ Godot 4.4+ with Jolt physics at 120 ticks per second.
 2. Press F5 (Run Project).
 
 ## Controls
+Whichever device you touched last drives the fighter.
+
+### Controller (Xbox 360 layout, the main scheme)
+The arms are muscle-driven: a stick pushes its hand with a force (pulling back on the
+shoulder), and the arm is otherwise loose, so it swings, sags and stays roughly where
+you leave it.
+
+| Input | Action |
+| --- | --- |
+| Left / right stick | Push the left / right hand: sideways (relative to the camera) and up / down |
+| Hold LB / RB | That stick pushes forward / pulls back instead of up / down |
+| LT / RT | Close the left / right hand |
+| A (hold) | Tense up |
+| X / B | Turn the shoulders left / right |
+| D-pad left / right | Swing the camera around the fighter. Up / down: zoom |
+| Back | Reset |
+
+The camera follows on its own and eases round behind the fighter as they turn.
+Legs, hips and stepping are not on the controller yet; WASD still shifts weight.
+
+### Mouse and keyboard (fallback)
 Click the game window to take the mouse (Esc gives it back). Until then the arms hang.
 
 | Input | Action |
@@ -39,6 +60,8 @@ Positions are world space; arrays are `[left, right]`.
 | `lead` | `0` left / `1` right | Lead hand (and later leg) | recorded only |
 | `hand_target` | `Vector3[2]` | Where each hand should go | M2 |
 | `hand_active` | `bool[2]` | Hand chases its target; false relaxes the arm to hanging | M2 |
+| `hand_effort` | `Vector3[2]`, length 0..1 | Muscle push on each hand (x `hand_muscle_force` N); the equal and opposite force goes on the shoulder | M2 |
+| `arm_tone` | `float[2]`, 0..1 | How firmly each arm holds its pose; scales the arm joint motors | M2 |
 | `grip` | `bool[2]` | Hand closed | M4 (grips) |
 | `weight_shift` | `Vector2`, -1..1 | Lean/step direction in the heading frame: x right, y forward | M3 |
 | `turn` | float, -1..1 | Shoulder turn, left to right (25 deg at the abdomen and chest each) | M1 |
@@ -69,6 +92,7 @@ within 3.5 cm on average (13 cm worst). The arm IK follows a smoothed copy of th
 ## Files
 - `scripts/fighter.gd`: builds the 15-part ragdoll, joint limits, joint motors, base, upright assist, and turns the intent into joint targets (arm IK).
 - `scripts/fighter_intent.gd`: the intent contract.
+- `scripts/pad_input.gd`: controller to intent (muscle arms).
 - `scripts/player_input.gd`: mouse and keyboard to intent.
 - `scripts/dev_keys.gd`: shove, reset and the reach drill.
 - `scripts/main.gd`: arena and HUD.
@@ -81,7 +105,8 @@ within 3.5 cm on average (13 cm worst). The arm IK follows a smoothed copy of th
 - `pose_gain`: how fast joints chase their target.
 - `elbow_pole`: where elbows point while reaching. `turn_deg`: how far Q/E twists. `max_tension`: Ctrl strength.
 - `PlayerInput`: `mouse_sensitivity`, `offset_min` / `offset_max` (box the hands stay in), `anchor_rate`.
-- `CameraRig`: `sensitivity`, `distance`, `follow_rate`.
+- `CameraRig`: `sensitivity`, `distance`, `follow_rate`, `turn_rate`.
+- Muscle arms: `hand_muscle_force` (Fighter), `arm_tone` and `settle_rate` (PadInput).
 - `upright_*`: the standing assist. Lower it for a wobblier, goofier fighter.
 - `assist_give_up_margin`: how far the center of mass can leave the base before the fighter is allowed to fall.
 - Per-joint `strength` and `lim` in the BODY / LIMB tables.
