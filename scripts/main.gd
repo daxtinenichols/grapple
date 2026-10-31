@@ -109,16 +109,29 @@ func _process(_delta: float) -> void:
 	if is_instance_valid(skin):
 		var head := skin.head_layer_mask()
 		cam.cull_mask = (cam.cull_mask & ~head) if cam.first_person else (cam.cull_mask | head)
+	# Both inputs turn you to face the training partner when it's near.
+	var foe: Fighter = partner.fighter if is_instance_valid(partner) and is_instance_valid(partner.fighter) else null
+	pad.opponent = foe
+	player.opponent = foe
 	if fighter and fighter.parts.has("pelvis"):
 		var it := fighter.intent
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 		var arms := player.controlled()
-		var help := "controller: sticks move the hands (sideways, push / pull)   hold RB: body (weight, lean, turn)   hold LB: legs   both: hips + both legs   click a stick: reset it   LT/RT grip   A tense\nD-pad camera   Start first / third person   Back reset" if pad_mode else \
-			"%s\nhold left / right mouse + move: move that arm (both buttons: both arms)   + wheel: reach\nno button: mouse turns the camera, wheel zooms   Q/E turn   WASD weight   Ctrl tense" % [
-			"" if captured else ">>> click the window to take the mouse (or pick up the controller) <<<"]
-		hud.text = "%s\nF shove   G big shove   R reset   M reach drill   Esc free mouse\n\n%s   grips %s %s   weight (%.1f, %.1f)   base margin %.2f m   assist %.0f%%   tension %.1f   %s" % [
-			help,
-			("controller: " + PadInput.Mode.keys()[pad.mode].to_lower()) if pad_mode else ("moving both arms" if arms[0] and arms[1] else "moving left arm" if arms[0] else "moving right arm" if arms[1] else "moving camera"),
+		var ground := fighter.on_ground()
+		var help := ""
+		if pad_mode:
+			help = ("on the mat: left stick hips and legs (down bridge, up legs up, sideways hip swing)   right stick chest (up sit up / scoot, down lie back, sideways shrimp)\nsit up + left stick down: stand up   hold LB / RB: right stick moves that hand   LT/RT grip" if ground else
+				"left stick walk   right stick both hands (push / pull / swing)   hold LB / RB: just that hand   LT/RT grip   hold B: lower stance (all the way: sit)") + \
+				"\nA tense   right stick click: hands to guard   D-pad camera   Start first / third person   Back reset"
+		else:
+			help = "%s\nhold left / right mouse + move: move that arm (both buttons: both arms)   + wheel: reach   no button: camera, wheel zooms\n%s   Q/E turn   Ctrl tense" % [
+				"" if captured else ">>> click the window to take the mouse (or pick up the controller) <<<",
+				"WASD hips and legs (S bridge, W legs up, A/D hip swing)   arrows chest (up sit up, down lie back, left/right shrimp)   sit up + S: stand" if ground else
+				"WASD walk   hold C: lower stance (all the way: sit)"]
+		var doing := pad.mode_text if pad_mode else ("moving both arms" if arms[0] and arms[1] else "moving left arm" if arms[0] else "moving right arm" if arms[1] else "moving camera")
+		if not pad_mode and ground:
+			doing += "   on the mat: " + fighter.moves.move_name
+		hud.text = "%s\nF shove   G big shove   R reset   M reach drill   Esc free mouse\n\n%s   grips %s %s   base margin %.2f m   tension %.1f   %s" % [
+			help, doing,
 			"L" if it.grip[0] else "-", "R" if it.grip[1] else "-",
-			it.weight_shift.x, it.weight_shift.y,
-			fighter.base_margin, fighter.assist * 100.0, fighter.tension, dev.drill_status()]
+			fighter.base_margin, fighter.tension, dev.drill_status()]

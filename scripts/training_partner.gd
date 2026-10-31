@@ -139,7 +139,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if fighter.parts.head.global_position.y < 0.9:
 		_down_time += delta
-		if _down_time > down_reset:
+		# The sparring AI gets up by itself (sit up, hips up); give it time.
+		var limit := down_reset if mode == PartnerAI.Mode.DUMMY else down_reset * 2.5
+		if _down_time > limit:
 			# Get back up where it started (no getting-up move yet).
 			_spawn_at(_spawn)
 	else:

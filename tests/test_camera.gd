@@ -1,7 +1,8 @@
 extends SceneTree
 
-## Camera steadiness: lying on the ground working the legs (limbs bumping the
-## floor) must not shake the third-person camera.
+## Camera steadiness: lying on the ground working the hips and legs (bridges,
+## hip swings, shrimps: limbs bumping the floor) must not shake the
+## third-person camera.
 
 var failures := 0
 
@@ -24,10 +25,9 @@ func _run() -> void:
 	for i in 60:
 		await physics_frame
 	f.shove(Vector3(0, 0, 220))
-	var none: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO]
-	pad.mode = PadInput.Mode.LEGS
+	var no_hands: Array[bool] = [false, false]
 	for k in 360:
-		pad.drive(none, dt)
+		pad.drive(Vector2.ZERO, Vector2.ZERO, no_hands, false, false, dt)
 		await physics_frame
 	# Work the legs for 4 s and watch how much the camera turns from frame to frame.
 	var prev := cam.global_basis
@@ -40,9 +40,8 @@ func _run() -> void:
 	var n := 0
 	for rep in 4:
 		for s in [Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0), Vector2(0, -1)]:
-			var st: Array[Vector2] = [s, -s]
 			for k in 30:
-				pad.drive(st, dt)
+				pad.drive(s, Vector2(-s.x, 0) * 0.5, no_hands, false, false, dt)
 				await physics_frame
 				await process_frame
 				# Shake = how much the camera's turn and travel change from one

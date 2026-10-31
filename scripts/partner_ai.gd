@@ -43,6 +43,10 @@ const HAND_MAX := Vector3(0.55, 0.35, -0.08)
 @export var grip_fighting := 0.6
 ## How far (m, chest to chest) it can reach to start grip fighting.
 @export var engage_range := 1.35
+## How close (m, chest to chest) it walks in before reaching for grips.
+@export var close_range := 0.8
+## Seconds it lies on the mat before getting up by itself.
+@export var get_up_delay := 1.2
 @export var seed := 0
 
 var act := Act.GUARD
@@ -69,6 +73,7 @@ var _stand_pending: Array[bool] = [false, false]
 ## The arm yanking free of a grip during STRIP, -1 if none.
 var _strip_arm := -1
 var _fighter_seen: Fighter
+var _down_time := 0.0
 
 
 func _ready() -> void:
@@ -109,6 +114,11 @@ func _dummy(delta: float) -> void:
 	it.turn = 0.0
 	it.torso_lean = 0.0
 	it.weight_shift = Vector2.ZERO
+	it.move = Vector2.ZERO
+	it.hips = Vector2.ZERO
+	it.upper = Vector2.ZERO
+	it.crouch = 0.0
+	it.face_dir = _face_dir()
 	for i in 2:
 		_want[i] = PlayerInput.GUARD[i]
 		_push[i] = Vector3.ZERO
@@ -133,23 +143,74 @@ func _spar(delta: float) -> void:
 	it.tension = _tension
 	it.torso_lean = _lean
 	it.weight_shift = _shift.limit_length(1.0)
-	it.turn = clampf(_facing() + _turn, -1.0, 1.0)
+	it.turn = clampf(_turn, -1.0, 1.0)
+	it.face_dir = _face_dir()
+	_footwork()
 	for i in 2:
 		it.grip[i] = _grip_want[i]
 	_move_hands(delta, arm_tone if act != Act.DOWN else 0.1)
 	if act == Act.DOWN:
 		for i in 2:
 			it.hand_active[i] = false
+		_get_up()
+
+
+## Steps in to grip range when nothing is held, and back out when crowded.
+## The fighter does the stepping (FighterMoves); this only sets the walk.
+func _footwork() -> void:
+	var it := fighter.intent
+	it.move = Vector2.ZERO
+	if act == Act.DOWN or not is_instance_valid(opponent) or not opponent.parts.has("chest"):
+		return
+	var d := _distance()
+	var to: Vector3 = opponent.parts.chest.global_position - fighter.parts.chest.global_position
+	to.y = 0.0
+	if to.length() < 0.01:
+		return
+	var dir := Vector2(to.x, to.z).normalized()
+	if _held_count() == 0 and d > close_range and d < engage_range * 2.5 and act in [Act.GUARD, Act.REACH]:
+		it.move = dir * clampf((d - close_range) * 1.5, 0.0, 0.6)
+	elif d < 0.45:
+		it.move = -dir * 0.4
+
+
+## On the mat: sit up, then drive the hips up into a stand-up, the same way
+## the player does it with the sticks.
+func _get_up() -> void:
+	var it := fighter.intent
+	it.move = Vector2.ZERO
+	if not fighter.on_ground():
+		it.upper = Vector2.ZERO
+		it.hips = Vector2.ZERO
+		return
+	_down_time += 1.0 / Engine.physics_ticks_per_second
+	if _down_time < get_up_delay:
+		it.upper = Vector2.ZERO
+		it.hips = Vector2.ZERO
+		return
+	var g := fighter.moves.ground
+	it.upper = Vector2(0, 1)
+	it.hips = Vector2(0, -1) if g == FighterMoves.Ground.SITTING or g == FighterMoves.Ground.ALL_FOURS else Vector2.ZERO
+
+
+func _face_dir() -> Vector2:
+	if not is_instance_valid(opponent) or not opponent.parts.has("chest"):
+		return Vector2.ZERO
+	var to: Vector3 = opponent.parts.chest.global_position - fighter.parts.chest.global_position
+	to.y = 0.0
+	return Vector2(to.x, to.z).normalized() if to.length() > 0.05 else Vector2.ZERO
 
 
 ## Picks what to do next from what it sees. Called every `reaction` seconds.
 func _decide() -> void:
 	var down: bool = fighter.has_fallen or fighter.parts.pelvis.global_position.y < 0.6
-	if down:
+	if down or fighter.on_ground() or fighter.moves.state == FighterMoves.State.RISING:
 		if act != Act.DOWN:
+			_down_time = 0.0
 			_start(Act.DOWN, 999.0)
 		return
 	if act == Act.DOWN:
+		it_clear_ground()
 		_start(Act.GUARD, 0.5)
 	var foe_ok := is_instance_valid(opponent) and opponent.parts.has("chest") and not opponent.has_fallen
 	if not foe_ok or _distance() > engage_range:
@@ -375,6 +436,11 @@ func _distance() -> float:
 	var d: Vector3 = opponent.parts.chest.global_position - fighter.parts.chest.global_position
 	d.y = 0.0
 	return d.length()
+
+
+func it_clear_ground() -> void:
+	fighter.intent.upper = Vector2.ZERO
+	fighter.intent.hips = Vector2.ZERO
 
 
 ## Turn needed to square up to the opponent, -1..1 (the fighter can twist

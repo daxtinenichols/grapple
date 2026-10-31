@@ -7,7 +7,13 @@ extends Node3D
 ## Faces -Z. The fighter's left side is -X.
 
 signal fell
+## Back on its feet after a stand-up.
+signal got_up
 
+## The automatic layer (FighterMoves): balance, stepping, walking, full-body
+## moves and the ground moves. Off = the legs and torso only follow the raw
+## pose fields (weight_shift, foot_effort, ...) as before.
+@export var auto_move := true
 ## Motor gain: how fast (1/s) a joint tries to close its angle error.
 @export var pose_gain := 14.0
 ## Strength multiplier at full intent tension (Ctrl). Relaxed is 1.0.
@@ -99,20 +105,61 @@ var _leg_hold: Array = [[Quaternion.IDENTITY, Quaternion.IDENTITY, Quaternion.ID
 	[Quaternion.IDENTITY, Quaternion.IDENTITY, Quaternion.IDENTITY]]
 var _ik_chest := Quaternion.IDENTITY
 var _ik_chest_fresh := true
+## Balance, stepping and the fundamental moves (see FighterMoves).
+var moves: FighterMoves
+## Arm tone set by an automatic hand this tick (-1 = use the intent's).
+var _auto_tone: Array[float] = [-1.0, -1.0]
+## Leg tone set by the ground moves this tick (-1 = use the intent's).
+var _auto_leg_tone := -1.0
 
 
 func _ready() -> void:
 	_build()
+	moves = FighterMoves.new(self)
+	moves.reset_stance()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	update_base()
+	_auto_tone = [-1.0, -1.0]
+	_auto_leg_tone = -1.0
 	_apply_intent()
+	if auto_move:
+		moves.update(delta)
 	_drive_joints()
 	_upright_assist()
 	if not has_fallen and parts.head.global_position.y < 0.9:
 		has_fallen = true
 		fell.emit()
+
+
+## On the mat (not standing or getting up).
+func on_ground() -> bool:
+	return auto_move and moves.on_ground()
+
+
+## Called by FighterMoves when a stand-up finishes.
+func stood_up() -> void:
+	has_fallen = false
+	got_up.emit()
+
+
+## Leg tone for this tick, from the ground moves.
+func set_auto_leg_tone(tone: float) -> void:
+	_auto_leg_tone = tone
+
+
+## The joints table entry for a part ("l_shin"), or {} if none.
+func joint_entry(part: String) -> Dictionary:
+	return _joint_by_name.get(part, {})
+
+
+## Points hand i at `target` with the arm IK, at the given tone, for this tick
+## (used by the automatic hands on the mat).
+func drive_hand(i: int, target: Vector3, tone: float) -> void:
+	_solve_arm(i, target)
+	set_target_quat(_arms[i].prefix + "hand", Quaternion.IDENTITY)
+	_auto_tone[i] = tone
 
 
 # --- Construction -----------------------------------------------------------
@@ -332,7 +379,7 @@ func _apply_intent() -> void:
 	# Torso and idle arms are only touched when the intent changes, so poses set
 	# with set_target (tests, later stance code) survive while the intent is idle.
 	var torso := Vector2(clampf(intent.turn, -1.0, 1.0), clampf(intent.torso_lean, -1.0, 1.0))
-	if torso != _last_torso:
+	if not auto_move and torso != _last_torso:
 		_last_torso = torso
 		# Forward lean is negative flex for the spine (positive tips it back).
 		set_target("abdomen", Vector3(-torso.y * lean_deg, -torso.x * turn_deg, 0))
@@ -349,7 +396,7 @@ func _apply_intent() -> void:
 			_leg_hold[i] = _current_leg_pose(i)
 			moved = true
 	var legs := [intent.weight_shift.limit_length(1.0), intent.leg_clamp[0], intent.leg_clamp[1]]
-	if legs != _last_legs or moved:
+	if not auto_move and (legs != _last_legs or moved):
 		_last_legs = legs
 		_set_leg_targets(legs[0], [legs[1], legs[2]])
 	# The arm IK hangs off a smoothed copy of the chest. Using the live chest made
@@ -495,9 +542,10 @@ func _drive_joints() -> void:
 			v = err.get_axis() * angle * pose_gain
 		var force: float = j.strength * strength_scale
 		if j.arm >= 0:
-			force *= clampf(intent.arm_tone[j.arm], 0.0, 1.0)
+			var tone: float = _auto_tone[j.arm] if _auto_tone[j.arm] >= 0.0 else intent.arm_tone[j.arm]
+			force *= clampf(tone, 0.0, 1.0)
 		elif j.leg >= 0:
-			force *= clampf(intent.leg_tone[j.leg], 0.0, 1.0)
+			force *= clampf(_auto_leg_tone if _auto_leg_tone >= 0.0 else intent.leg_tone[j.leg], 0.0, 1.0)
 		var jn: Generic6DOFJoint3D = j.joint
 		for axis in 3:
 			_set_axis_param(jn, axis, Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_TARGET_VELOCITY, -v[axis])
@@ -566,12 +614,16 @@ func _signed_margin(pt: Vector2, hull: PackedVector2Array) -> float:
 func _upright_assist() -> void:
 	var standing: bool = parts.pelvis.global_position.y > 0.6
 	var target := 1.0 if standing and base_margin > -assist_give_up_margin else 0.0
+	if auto_move:
+		# Stepping catches the balance, so the assist stays on while standing.
+		target = 1.0 if moves.standing() else 0.0
 	assist = move_toward(assist, target, 4.0 / Engine.physics_ticks_per_second)
 	if assist <= 0.0:
 		return
 	# The chest is held at the torso lean the intent asks for, not bolt upright.
 	var hb := heading_basis()
-	var lean := deg_to_rad(clampf(intent.torso_lean, -1.0, 1.0) * lean_deg * 1.7)
+	var lean_in := moves.lean_total if auto_move else clampf(intent.torso_lean, -1.0, 1.0)
+	var lean := deg_to_rad(lean_in * lean_deg * 1.7)
 	var chest_up := Vector3.UP.rotated(hb.x, -lean)
 	for n in ["pelvis", "chest"]:
 		var b: RigidBody3D = parts[n]

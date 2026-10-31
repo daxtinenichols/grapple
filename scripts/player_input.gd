@@ -7,20 +7,30 @@ extends Node
 ##     The hand moves the way the mouse moves on screen. A held button also closes that hand.
 ##   Hold a button + wheel: reach out / pull in that arm.
 ##   No button: mouse orbits the camera, wheel zooms.
-##   WASD: weight shift    Q / E: turn shoulders    Ctrl: tense    Tab: swap lead side
-##   Shift: hips focus    Space: legs focus
+##   WASD: walk (camera relative); on the mat the hips and legs, like the
+##     controller's left stick (S = bridge, W = legs up, A / D = hip swing)
+##   Arrow keys: on the mat the chest, like the right stick (up = sit up /
+##     scoot, down = lie back, left / right = shrimp)
+##   C (hold): lower your stance, all the way to sit down
+##   Q / E: turn shoulders    Ctrl: tense    Tab: swap lead side
 
 ## Actions this script registers if project.godot doesn't define them already.
 const BINDINGS := {
 	"move_left": KEY_A, "move_right": KEY_D, "move_forward": KEY_W, "move_back": KEY_S,
 	"turn_left": KEY_Q, "turn_right": KEY_E, "tense": KEY_CTRL, "swap_lead": KEY_TAB,
 	"focus_hips": KEY_SHIFT, "focus_legs": KEY_SPACE,
+	"upper_left": KEY_LEFT, "upper_right": KEY_RIGHT, "upper_up": KEY_UP, "upper_down": KEY_DOWN,
+	"crouch": KEY_C,
 }
 ## Starting hand offsets from the chest, in the heading frame (x right, y up, -z forward).
 const GUARD: Array[Vector3] = [Vector3(-0.18, -0.15, -0.3), Vector3(0.18, -0.15, -0.3)]
 
 @export var fighter: Fighter
 @export var camera: CameraRig
+## Who to face (main sets it to the training partner).
+@export var opponent: Fighter
+## Face the opponent when closer than this (m).
+@export var face_range := 3.0
 ## Metres a hand moves per pixel of mouse motion.
 @export var mouse_sensitivity := 0.002
 ## Box the hand offsets stay in, metres from the chest: x sideways, y up/down, z forward.
@@ -35,6 +45,8 @@ const GUARD: Array[Vector3] = [Vector3(-0.18, -0.15, -0.3), Vector3(0.18, -0.15,
 var hand_offset: Array[Vector3] = GUARD.duplicate()
 var _anchor := Vector3.ZERO
 var _anchor_fighter: Fighter
+var _face := Vector2(0, -1)
+var _crouch := 0.0
 
 
 func _ready() -> void:
@@ -123,8 +135,23 @@ func _physics_process(delta: float) -> void:
 		it.lead = 1 - it.lead
 	it.tension = 1.0 if Input.is_action_pressed("tense") else 0.0
 	it.turn = Input.get_axis("turn_left", "turn_right")
-	it.weight_shift = Input.get_vector("move_left", "move_right", "move_back", "move_forward")
+	it.weight_shift = Vector2.ZERO
 	it.grip = controlled()
+	var base := Input.get_vector("move_left", "move_right", "move_back", "move_forward")
+	var ground := fighter.on_ground()
+	if ground:
+		it.move = Vector2.ZERO
+		it.hips = base
+		it.upper = Input.get_vector("upper_left", "upper_right", "upper_down", "upper_up")
+		_crouch = 0.0
+	else:
+		it.hips = Vector2.ZERO
+		it.upper = Vector2.ZERO
+		it.move = _camera_relative(base)
+		var c := Input.is_action_pressed("crouch")
+		_crouch = move_toward(_crouch, 1.0 if c else 0.0, (1.4 if c else 2.5) * delta)
+	it.crouch = _crouch
+	it.face_dir = _face_dir(it.move)
 
 	# Smooth the chest position the hands hang off, so body sway doesn't feed
 	# straight back into the arms.
@@ -133,16 +160,45 @@ func _physics_process(delta: float) -> void:
 		_anchor_fighter = fighter
 		_anchor = chest
 		hand_offset = GUARD.duplicate()
+		_crouch = 0.0
+		var hf := -fighter.heading_basis().z
+		_face = Vector2(hf.x, hf.z).normalized()
 	_anchor = _anchor.lerp(chest, 1.0 - exp(-anchor_rate * delta))
 
 	# Arms hang until you take the mouse, then each hand holds where you left it.
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	var targets := hand_targets(fighter, _anchor, hand_offset)
+	var held := controlled()
 	for i in 2:
 		it.hand_target[i] = targets[i]
-		it.hand_active[i] = captured
+		# On the mat a hand you aren't moving posts and frames by itself.
+		it.hand_active[i] = captured and (not ground or held[i])
 		it.hand_effort[i] = Vector3.ZERO
 		it.arm_tone[i] = 1.0
+
+
+func _camera_relative(s: Vector2) -> Vector2:
+	if s == Vector2.ZERO:
+		return Vector2.ZERO
+	var fwd := Vector3(0, 0, -1)
+	if camera:
+		fwd = -camera.global_basis.z
+		fwd.y = 0.0
+		fwd = fwd.normalized() if fwd.length_squared() > 0.0001 else Vector3(0, 0, -1)
+	var w := fwd.cross(Vector3.UP) * s.x + fwd * s.y
+	return Vector2(w.x, w.z).limit_length(1.0)
+
+
+func _face_dir(move: Vector2) -> Vector2:
+	if is_instance_valid(opponent) and opponent.parts.has("chest"):
+		var d: Vector3 = opponent.parts.chest.global_position - fighter.parts.chest.global_position
+		d.y = 0.0
+		if d.length() < face_range and d.length() > 0.05:
+			_face = Vector2(d.x, d.z).normalized()
+			return _face
+	if move.length() > 0.2:
+		_face = move.normalized()
+	return _face
 
 
 ## World hand targets from per-hand offsets in the fighter's heading frame.

@@ -47,6 +47,24 @@ var leg_clamp: Array[bool] = [false, false]
 ## last pushed into). Hold it true for one tick.
 var leg_stand: Array[bool] = [false, false]
 
+## --- Fundamental moves (read by FighterMoves) ---
+## Walk, world space (x, z), length 0..1 (1 = walk_speed). Standing only.
+var move := Vector2.ZERO
+## Direction to face, world space (x, z). Zero keeps the current heading.
+var face_dir := Vector2.ZERO
+## Level change, 0 (tall) .. 1 (low). Held at 1 it sits you down on the mat.
+var crouch := 0.0
+## On the mat, the hips and legs: y up = knees / legs up, y down = bridge
+## (diagonals bridge over that shoulder), x = swing hips and legs that way.
+## Sitting or on hands and knees, y down drives the hips up into a stand-up.
+var hips := Vector2.ZERO
+## On the mat, the chest and shoulders: y up = sit up (held while sitting:
+## butt scoot forward; face down: push up), y down = lie back, x = shrimp to
+## that side (face down: roll that way).
+var upper := Vector2.ZERO
+## Hips and legs follow the hands (lean, hip drive, throw turn, brace).
+var full_body := true
+
 ## Reserved for ground mode (milestone 5). Not read yet.
 var hip_target := Vector3.ZERO
 var hip_active := false
@@ -71,3 +89,9 @@ func reset() -> void:
 	tension = 0.0
 	hip_active = false
 	foot_active = [false, false]
+	move = Vector2.ZERO
+	face_dir = Vector2.ZERO
+	crouch = 0.0
+	hips = Vector2.ZERO
+	upper = Vector2.ZERO
+	full_body = true
