@@ -37,3 +37,13 @@ The build is split into four workstreams, one Claude thread each, described in t
 (`ws1-movement`, `ws2-rules`, `ws3-ai`, `ws4-scene`) and merges into `main` through a pull request
 per milestone. Movement owns `scripts/fighter.gd` and the intent contract; the other streams add
 their own scripts. Record new intent fields, exposed values and signals in this README.
+
+## Scene and fighter look (workstream 4)
+Open `scenes/match.tscn` and press F6 (Run Current Scene). `main.tscn` is unchanged.
+
+- `scenes/arena.tscn` + `scripts/arena.gd` (`Arena`): an 8 x 8 m blue combat area inside a 2 m yellow safety border (`materials/mat.gdshader`), tile seams, start marks, lights, a floor, and `SpawnA` / `SpawnB` facing each other. `watch(fighter)` makes it emit `fighter_left_mat(fighter)` when the pelvis crosses the combat edge; `is_on_mat(point)` and `spawn_transform(i)` are there for the rules thread.
+- `scripts/fighter_skin.gd` (`FighterSkin`): a gi jacket, pants, belt, bare hands and feet, and a face with googly eyes, each piece following one ragdoll part. It adds no bodies, shapes or joints and never writes to the fighter; it only hides the ragdoll's own debug meshes. Colors are exports (`gi_color`, `belt_color`, `skin_tone`, `hair_color`).
+- `scripts/match.gd`: spawns two skinned fighters and resets both to their spawns when one leaves the combat area. Dev keys: F / G shove fighter A, R reset, K skin or plain ragdoll, J / L orbit. Its camera is a plain viewer; the real camera belongs to movement.
+- `tests/test_scene.gd`: headless checks (facing, no extra physics, skin follows parts, edge reset). `tests/screenshot_match.gd` saves screenshots (needs a window).
+
+Scene milestones: [x] 1. match scene · [ ] 2. camera (with movement) · [ ] 3. HUD · [x] 4. fighter look (first pass) · [ ] 5. match flow, menus, sound
