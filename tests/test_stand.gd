@@ -3,7 +3,7 @@ extends SceneTree
 ## Headless check for the standing milestone:
 ##   godot --headless --path . --script res://tests/test_stand.gd
 ## 1. stands for 5 s, 2. survives a small shove, 3. falls from a big one,
-## 4. elbow and knee targets are reached, 5. the elbow can't hyperextend.
+## 3b. goes floppy once down, 4. elbow and knee targets are reached, 5. the elbow can't hyperextend.
 
 var failures := 0
 
@@ -25,8 +25,11 @@ func _run() -> void:
 	f.shove(Vector3(0, 0, -220))
 	await _wait(4.0)
 	_check("falls from big shove", f.parts.head.global_position.y < 0.9, "head y %.2f" % f.parts.head.global_position.y)
+	_check("goes floppy after falling", f.limpness_scale <= f.floppy_strength + 0.01, "strength x%.2f" % f.limpness_scale)
 
+	# Joint accuracy only: bending a knee tips the fighter over, so keep full strength.
 	f = await _fresh()
+	f.floppy_strength = 1.0
 	f.set_target("r_forearm", Vector3(90, 0, 0))
 	f.set_target("l_shin", Vector3(-60, 0, 0))
 	await _wait(2.0)

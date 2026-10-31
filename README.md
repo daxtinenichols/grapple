@@ -15,6 +15,8 @@ Godot 4.4+ with Jolt physics at 120 ticks per second.
 | Ctrl (hold) | Tense up: joint motors get 1.8x stronger |
 | J / L | Orbit the camera |
 
+When the balance assist gives up, the joints fade to `floppy_strength` (12%) so the fighter flops instead of falling like a plank.
+
 The overlay draws the center of mass (white cross), mat contacts (yellow) and the
 base polygon (green when balanced, red when the center of mass has left it).
 
