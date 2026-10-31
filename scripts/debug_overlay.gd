@@ -3,6 +3,8 @@ extends MeshInstance3D
 
 ## Draws the fighter's center of mass, mat contacts and base polygon.
 ## Green base = balanced, red = the COM has left the base.
+## Also draws the live intent: the arm target skeleton (shoulder, elbow, hand
+## target; yellow = hand closed, bigger cross = lead hand) and the weight shift arrow.
 
 var fighter: Fighter
 var _im := ImmediateMesh.new()
@@ -36,6 +38,22 @@ func _process(_delta: float) -> void:
 	_line(c, Vector3(c.x, y, c.z), Color.WHITE)
 	_cross(c, 0.06, Color.WHITE)
 	_cross(Vector3(c.x, y, c.z), 0.05, col)
+
+	var it := fighter.intent
+	for i in 2:
+		var ik: Dictionary = fighter.arm_ik[i]
+		if ik.is_empty():
+			continue
+		var tc := Color(1, 0.9, 0.2) if it.grip[i] else Color(0.3, 0.9, 1)
+		var dim := tc.darkened(0.45)
+		_line(ik.shoulder, ik.elbow, dim)
+		_line(ik.elbow, ik.reach, dim)
+		_cross(ik.target, 0.06 if i == it.lead else 0.035, tc)
+	if it.weight_shift.length() > 0.01:
+		var hb := fighter.heading_basis()
+		var g := Vector3(c.x, y, c.z)
+		var tip := g + hb * Vector3(it.weight_shift.x, 0, -it.weight_shift.y) * 0.3
+		_line(g, tip, Color(1, 0.5, 1))
 	_im.surface_end()
 
 

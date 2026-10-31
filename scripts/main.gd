@@ -1,16 +1,16 @@
 extends Node3D
 
-## Test arena for the standing ragdoll milestone.
-## F: shove, G: big shove, R: reset, hold Ctrl: tense up.
-
-const SHOVE := 60.0
-const BIG_SHOVE := 220.0
+## Test arena. Player controls live in PlayerInput, test keys in DevKeys.
 
 var fighter: Fighter
+var player: PlayerInput
+var pad: PadInput
+## True while the controller drives the fighter, false for mouse and keyboard.
+var pad_mode := false
+var dev: DevKeys
 var overlay: DebugOverlay
 var hud: Label
-var cam: Camera3D
-var cam_yaw := 0.6
+var cam: CameraRig
 
 
 func _ready() -> void:
@@ -55,11 +55,29 @@ func _build_world() -> void:
 	mat.physics_material_override = pm
 	add_child(mat)
 
-	cam = Camera3D.new()
+	cam = CameraRig.new()
+	cam.name = "Camera"
 	add_child(cam)
 
 	overlay = DebugOverlay.new()
 	add_child(overlay)
+
+	player = PlayerInput.new()
+	player.name = "PlayerInput"
+	player.camera = cam
+	add_child(player)
+
+	pad = PadInput.new()
+	pad.name = "PadInput"
+	pad.camera = cam
+	add_child(pad)
+	_set_pad_mode(not Input.get_connected_joypads().is_empty())
+
+	dev = DevKeys.new()
+	dev.name = "DevKeys"
+	dev.camera = cam
+	dev.reset_requested.connect(_spawn_fighter)
+	add_child(dev)
 
 	hud = Label.new()
 	hud.position = Vector2(16, 12)
@@ -75,35 +93,39 @@ func _spawn_fighter() -> void:
 	fighter.name = "Fighter"
 	add_child(fighter)
 	overlay.fighter = fighter
+	player.fighter = fighter
+	pad.fighter = fighter
+	dev.fighter = fighter
+	dev.clear_drill()
+	cam.target = fighter
+	cam.snap()
 
 
-func _physics_process(_delta: float) -> void:
-	if Input.is_action_just_pressed("reset"):
-		_spawn_fighter()
-		return
-	fighter.tension = 1.8 if Input.is_action_pressed("tense") else 1.0
-	if Input.is_action_just_pressed("shove"):
-		fighter.shove(_shove_dir() * SHOVE)
-	if Input.is_action_just_pressed("big_shove"):
-		fighter.shove(_shove_dir() * BIG_SHOVE)
+## Whichever device was touched last drives the fighter.
+func _input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.4):
+		_set_pad_mode(true)
+	elif event is InputEventMouseButton or (event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED):
+		_set_pad_mode(false)
 
 
-func _process(delta: float) -> void:
-	if Input.is_key_pressed(KEY_J):
-		cam_yaw -= delta * 1.5
-	if Input.is_key_pressed(KEY_L):
-		cam_yaw += delta * 1.5
+func _set_pad_mode(on: bool) -> void:
+	pad_mode = on
+	pad.set_physics_process(on)
+	player.set_physics_process(not on)
+
+
+func _process(_delta: float) -> void:
 	if fighter and fighter.parts.has("pelvis"):
-		var focus: Vector3 = fighter.parts.pelvis.global_position
-		focus.y = 0.9
-		cam.global_position = focus + Vector3(sin(cam_yaw), 0.35, cos(cam_yaw)) * 3.2
-		cam.look_at(focus)
-		hud.text = "F shove   G big shove   R reset   hold Ctrl tense   J/L orbit\nbase margin %.2f m   assist %.0f%%   tension %.1f" % [
-			fighter.base_margin, fighter.assist * 100.0, fighter.tension]
-
-
-## Push away from the camera so the shove is easy to read.
-func _shove_dir() -> Vector3:
-	var d := -cam.global_basis.z
-	d.y = 0.0
-	return d.normalized()
+		var it := fighter.intent
+		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+		var arms := player.controlled()
+		var help := "controller: sticks move the hands (sideways, push / pull)   hold RB: body (weight, lean, turn)   hold LB: legs   LT/RT grip   A tense\nD-pad camera   Start first / third person   Back reset" if pad_mode else \
+			"%s\nhold left / right mouse + move: move that arm (both buttons: both arms)   + wheel: reach\nno button: mouse turns the camera, wheel zooms   Q/E turn   WASD weight   Ctrl tense" % [
+			"" if captured else ">>> click the window to take the mouse (or pick up the controller) <<<"]
+		hud.text = "%s\nF shove   G big shove   R reset   M reach drill   Esc free mouse\n\n%s   grips %s %s   weight (%.1f, %.1f)   base margin %.2f m   assist %.0f%%   tension %.1f   %s" % [
+			help,
+			("controller: " + PadInput.Mode.keys()[pad.mode].to_lower()) if pad_mode else ("moving both arms" if arms[0] and arms[1] else "moving left arm" if arms[0] else "moving right arm" if arms[1] else "moving camera"),
+			"L" if it.grip[0] else "-", "R" if it.grip[1] else "-",
+			it.weight_shift.x, it.weight_shift.y,
+			fighter.base_margin, fighter.assist * 100.0, fighter.tension, dev.drill_status()]
