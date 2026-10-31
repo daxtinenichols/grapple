@@ -11,6 +11,8 @@ var dev: DevKeys
 var overlay: DebugOverlay
 var hud: Label
 var cam: CameraRig
+## Gi model over the fighter (scenes workstream); see FighterSkin.
+var skin: FighterSkin
 
 
 func _ready() -> void:
@@ -19,41 +21,8 @@ func _ready() -> void:
 
 
 func _build_world() -> void:
-	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.16, 0.17, 0.2)
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.6, 0.6, 0.65)
-	env.environment = e
-	add_child(env)
-
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-55, 35, 0)
-	sun.shadow_enabled = true
-	add_child(sun)
-
-	var mat := StaticBody3D.new()
-	mat.name = "Mat"
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(12, 1, 12)
-	shape.shape = box
-	shape.position.y = -0.5
-	mat.add_child(shape)
-	var mesh := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(12, 0.1, 12)
-	mesh.mesh = bm
-	mesh.position.y = -0.05
-	var mm := StandardMaterial3D.new()
-	mm.albedo_color = Color(0.2, 0.42, 0.62)
-	mesh.material_override = mm
-	mat.add_child(mesh)
-	var pm := PhysicsMaterial.new()
-	pm.friction = 1.0
-	mat.physics_material_override = pm
-	add_child(mat)
+	# The gym (scene workstream): mats, walls, lights. Its Mat body is the floor.
+	add_child(load("res://scenes/gym.tscn").instantiate())
 
 	cam = CameraRig.new()
 	cam.name = "Camera"
@@ -92,6 +61,11 @@ func _spawn_fighter() -> void:
 	fighter = Fighter.new()
 	fighter.name = "Fighter"
 	add_child(fighter)
+	skin = FighterSkin.new()
+	skin.name = "Skin"
+	skin.head_layer = 19
+	add_child(skin)
+	skin.attach(fighter)
 	overlay.fighter = fighter
 	player.fighter = fighter
 	pad.fighter = fighter
@@ -116,6 +90,10 @@ func _set_pad_mode(on: bool) -> void:
 
 
 func _process(_delta: float) -> void:
+	# In first person, hide our own head from our own camera.
+	if is_instance_valid(skin):
+		var head := skin.head_layer_mask()
+		cam.cull_mask = (cam.cull_mask & ~head) if cam.first_person else (cam.cull_mask | head)
 	if fighter and fighter.parts.has("pelvis"):
 		var it := fighter.intent
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED

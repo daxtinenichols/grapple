@@ -25,15 +25,20 @@ func _run() -> void:
 	var bodies := 0
 	var shapes := 0
 	var joints := 0
-	for n in _all(m):
+	var fighter_nodes: Array[Node] = []
+	for f in m.fighters:
+		fighter_nodes.append_array(_all(f))
+	for s in m.skins:
+		fighter_nodes.append_array(_all(s))
+	for n in fighter_nodes:
 		if n is PhysicsBody3D:
 			bodies += 1
 		if n is CollisionShape3D:
 			shapes += 1
 		if n is Joint3D:
 			joints += 1
-	# Every part of both fighters plus the mat and the floor; the fighters' own joints.
-	var want_bodies: int = a.parts.size() + b.parts.size() + 2
+	# Exactly the fighters' own parts and joints (the arena's scenery is not counted).
+	var want_bodies: int = a.parts.size() + b.parts.size()
 	var want_joints: int = a.joints.size() + b.joints.size()
 	_check("skin adds no physics", bodies == want_bodies and shapes == want_bodies and joints == want_joints, "bodies %d shapes %d joints %d" % [bodies, shapes, joints])
 	var skin_bodies := 0
