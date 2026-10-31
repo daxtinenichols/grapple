@@ -7,48 +7,58 @@ Godot 4.4+ with Jolt physics at 120 ticks per second.
 2. Press F5 (Run Project).
 
 ## Controls
-Whichever device you touched last drives the fighter.
+Whichever device you touched last drives the fighter. Controls are built around
+fundamental moves: one stick is your base, the other your upper body, and the
+fighter balances, steps and blends the moves itself (design doc:
+https://claude.ai/artifact/V48926KUJ4AoSziN9xjo5n).
 
 ### Controller (Xbox 360 layout, the main scheme)
-Both thumbs stay on the sticks; the bumpers (index fingers) pick what the sticks move.
+
+**Standing**
 
 | Input | Action |
 | --- | --- |
-| Left / right stick | Move the left / right hand relative to your chest: sideways, and up = push forward, down = pull back. Hands sit at chest height; lean to reach lower. The hand stays where you leave it. |
-| Hold RB (body) | Left stick shifts your weight over your feet. Right stick: up / down leans the torso forward / back, left / right turns the shoulders. They move at a steady speed and stay where you leave them, in every mode. Click either stick to recentre. |
-| Hold LB (legs) | Sticks move the left / right foot relative to your hips: up pushes it out the way the knee points, down pulls the heel in (past 60% it clamps the knee), sideways is sideways. Works the same standing or on your back. Each leg stays in the pose you leave it in (a clamped knee stays bent). Click a stick to straighten that leg. |
-| Hold RB + LB (body and legs) | Left stick shifts your weight / hips as in body mode. Right stick moves both legs together the way one stick moves a leg in legs mode, so pulling it down clamps both knees (a closed guard squeeze) while the left stick moves your hips. Click the left stick to recentre the hips, the right stick to straighten both legs. Clamping both knees while standing drops you. |
-| LT / RT | Close the left / right hand, in every mode, so a grip holds through a throw |
-| A (hold) | Tense up |
-| D-pad left / right | Third person: swing the camera around. Up / down: zoom |
-| Start (or V) | First person / third person |
-| Back | Reset |
+| Left stick | Walk, relative to the camera. You face your partner automatically when it is within 3 m, otherwise you turn the way you walk. The legs step by themselves, and also step to catch you after a shove. |
+| Right stick | Both hands: sideways, up = push / reach forward, down = pull back to your chest. The whole body follows: reaching far leans you in and drives the hips forward, pulling sinks you and drops the hips back, swinging both hands to one side turns the shoulders and hips together like a throw while the feet widen and stay planted. |
+| Hold LB / RB | The right stick moves only the left / right hand; the other one stays. |
+| LT / RT | Close the left / right hand (grip), standing or on the mat. |
+| Hold B | Lower your stance (level change). Hold it all the way down to sit on the mat. |
+| Hold A | Tense up. |
+| Right stick click | Hands back to your guard. |
+| D-pad left / right, up / down | Swing the camera, zoom. |
+| Start (or V) | First person / third person. |
+| Back | Reset. |
 
-The camera starts in third person, close behind and a little above you so you can see
-your whole body; first person (Start or V) sits just in front of the head. Arms run at 70% tone with a light muscle push; legs go loose
-(15%) while their stick moves them. Stepping is not in yet, so lifting a foot while
-standing usually ends in a fall.
+**On the mat** (the sticks switch by themselves when you go down)
+
+| Stick | Up | Down | Left / right |
+| --- | --- | --- | --- |
+| Left (hips and legs) | Knees and feet up toward your partner (guard, frames) | Bridge; down-left / down-right bridges over that shoulder | Swing your hips and legs that way (pivot on your back, turn on your butt) |
+| Right (chest) | Sit up; keep holding once sitting to butt scoot forward. Face down: push up onto hands and knees | Lie back down | Shrimp: turn onto that side and push the hips away. Face down: roll that way |
+
+- **Stand up:** sit up (right stick up) and push the left stick down to drive the hips up, a technical stand-up. From hands and knees, left stick down also stands you up.
+- **Hands on the mat** post and frame by themselves (behind you when sitting, a frame in front on your back, under the shoulders when you push up). Hold LB / RB to move that hand with the right stick instead.
+- If a shove or a pull knocks you off balance you go loose and fall; a big shove (G) always puts you down, a small one (F) you catch with a step.
 
 ### Mouse and keyboard (fallback)
-Click the game window to take the mouse (Esc gives it back). Until then the arms hang.
+Click the game window to take the mouse (Esc gives it back).
 
 | Input | Action |
 | --- | --- |
-| Hold left / right mouse button + move the mouse | Move the left / right arm the way the mouse moves on screen. Hold both to move both arms. A held button also closes that hand (grabbing comes with grips). Each hand stays where you leave it. |
+| WASD | Walk (camera relative). On the mat: the hips and legs, like the left stick (W legs up, S bridge, A / D hip swing). |
+| Arrow keys | On the mat: the chest, like the right stick (up sit up / scoot, down lie back, left / right shrimp). |
+| Hold left / right mouse button + move the mouse | Move the left / right arm the way the mouse moves on screen (both buttons: both arms). A held button also closes that hand. On the mat the hands post by themselves unless a button is held. |
 | Hold a button + wheel | Reach out / pull in that arm |
 | Mouse with no button held | Orbit the camera. Wheel zooms. |
+| Hold C | Lower your stance; all the way down sits you on the mat. |
 | Q / E | Turn the shoulders |
-| WASD | Weight shift (recorded in the intent; stepping comes in movement milestone 3) |
-| Ctrl (hold) | Tense up: joint motors get 1.8x stronger |
-| Tab | Swap the lead side |
-| Shift / Space (hold) | Hips / legs focus (recorded; used from movement milestone 5) |
+| Ctrl (hold) | Tense up |
 
 Dev keys: F small shove, G big shove, R reset, M reach drill (touch the three balls in order), J / L orbit the camera.
 
 The overlay draws the center of mass (white cross), mat contacts (yellow), the
 base polygon (green when balanced, red when the center of mass has left it), each
-arm's IK target skeleton (shoulder, elbow, hand target; yellow when the hand is
-closed, bigger cross on the lead hand) and the weight shift arrow (pink).
+arm's IK target skeleton and the weight shift arrow (pink).
 
 ## FighterIntent (the contract)
 `Fighter` never reads `Input`. Each tick something writes `fighter.intent`
@@ -72,7 +82,24 @@ Positions are world space; arrays are `[left, right]`.
 | `leg_tone` | `float[2]`, 0..1 | How firmly each leg holds its pose | M2 |
 | `leg_clamp` | `bool[2]` | Bend that knee hard (hooks, closed guard) | M2 |
 | `tension` | float, 0..1 | Relaxed to fully tense; strength x1.0 to x`max_tension` | M1 |
+| `move` | `Vector2`, world (x, z), length 0..1 | Walk; the fighter steps by itself (`FighterMoves.walk_speed` at 1) | moves |
+| `face_dir` | `Vector2`, world (x, z) | Direction to face; zero keeps the current heading | moves |
+| `crouch` | float, 0..1 | Level change; held at 1 it sits the fighter down | moves |
+| `hips` | `Vector2`, -1..1 | On the mat: y up legs up, y down bridge (diagonal: over that shoulder), x hip swing. Sitting / on hands and knees, y down stands up | moves |
+| `upper` | `Vector2`, -1..1 | On the mat: y up sit up (sitting: butt scoot; face down: push up), y down lie back, x shrimp (face down: roll) | moves |
+| `full_body` | bool | Hips and legs follow the hands (default on) | moves |
 | `hip_target`, `hip_active`, `foot_target`, `foot_active` | | Reserved for ground mode | M5 |
+
+With `auto_move` on (the default) the legs and torso are driven by `FighterMoves`
+(`fighter.moves`): `weight_shift` shifts the hips over the planted feet, `turn` and
+`torso_lean` add to the full-body lean and turn, and a leg with `foot_effort` is
+let go by the stepping so it can kick or sweep. `leg_clamp` / `leg_stand` are only
+read with `auto_move` off.
+
+`fighter.moves` exposes `state` (`STAND`, `DOWN`, `RISING`, `SITTING_DOWN`),
+`ground` (`SUPINE`, `SIDE`, `PRONE`, `SITTING`, `ALL_FOURS`), `move_name` (what it
+is doing on the mat), `standing()` and `on_ground()`; `Fighter.on_ground()` and the
+`got_up` signal too.
 
 Values other systems can read on `Fighter`: `tension`, `stamina`, `com`, `base_margin`,
 `base_hull`, `assist`, `has_fallen` (signal `fell`), `arm_ik` (per-arm shoulder, elbow,
@@ -81,9 +108,9 @@ target, reachable point), and `heading_basis()` (yaw-only frame, -Z = facing).
 ## Movement milestones (workstream 1)
 - [x] 1. FighterIntent and PlayerInput; test keys moved to `DevKeys`
 - [x] 2. Hand IK on a hidden target skeleton, reach drill
-- [ ] 3. Weight shift and stepping
-- [ ] 4. Gi grips on a dummy
-- [ ] 5. Ground mode
+- [x] 3. Weight shift and stepping (FighterMoves: balance, catch steps, walking, facing, full-body moves)
+- [x] 4. Gi grips on a dummy (GripSystem, AI workstream)
+- [x] 5. Ground mode (bridge, shrimp, sit up, butt scoot, legs up, hip swing, push up, roll, stand up)
 - [ ] 6. Two fighters and the core test
 - [ ] 7. Stamina economy
 
@@ -95,16 +122,32 @@ first fraction of a second. Reaches across a 75-point grid in front of the body 
 within 3.5 cm on average (13 cm worst). The arm IK follows a smoothed copy of the chest
 (`ik_chest_rate`) to stop a feedback buzz.
 
+How the automatic layer works (`scripts/fighter_moves.gd`): standing, a capped
+vertical force holds the pelvis at stand / crouch height while a foot is down, a
+capped horizontal force walks the body or keeps the centre of mass over the feet,
+and a yaw torque turns it to `face_dir`. The legs run two-bone IK to planted ankle
+anchors; a foot steps (lifted arc, `step_time` 0.3 s) when its anchor falls behind
+where it should be, when the facing turns, or at once when the centre of mass
+leaves the base. Moving faster than `lose_speed` or leaning past `lose_offset`
+drops the fighter (assists off). On the mat each move is a blend of leg and spine
+poses plus capped assists that only push while the right parts touch the mat
+(the bridge needs planted feet, the shrimp a pelvis on the mat, the push up hands
+or knees down), so moves can be blocked or fail. Tuning lives at the top of
+`FighterMoves` (`walk_speed`, `balance_force`, `stance_half`, `lose_speed`,
+`shrimp_force`, ...).
+
 ## Files
 - `scripts/fighter.gd`: builds the 15-part ragdoll, joint limits, joint motors, base, upright assist, and turns the intent into joint targets (arm IK).
 - `scripts/fighter_intent.gd`: the intent contract.
-- `scripts/pad_input.gd`: controller to intent (muscle arms).
+- `scripts/fighter_moves.gd`: the automatic layer: balance, stepping, walking, facing, full-body moves, ground moves, stand-up.
+- `scripts/pad_input.gd`: controller to intent (fundamental-move mapping).
 - `scripts/player_input.gd`: mouse and keyboard to intent.
 - `scripts/dev_keys.gd`: shove, reset and the reach drill.
 - `scripts/main.gd`: arena and HUD.
 - `scripts/camera_rig.gd`: smoothed orbit camera (mouse with no button held, wheel zoom).
 - `scripts/debug_overlay.gd`: balance and intent overlay.
-- `tests/test_stand.gd`, `tests/test_controls.gd`: headless checks. Run `godot --headless --path . --script res://tests/<name>.gd`.
+- `tests/test_stand.gd`, `tests/test_controls.gd`, `tests/test_moves.gd` (29 checks of balance, walking, full-body and ground moves, plus the AI walking in and getting up): headless checks. Run `godot --headless --path . --script res://tests/<name>.gd` (test_moves takes one test name after `--` to run just that one).
+- `tests/screenshot_moves.gd`: screenshots of the moves (needs a window).
 - `tests/screenshot.gd`, `tests/screenshot_reach.gd`: save screenshots (need a window, not `--headless`).
 
 ## Tuning knobs (Fighter inspector or top of fighter.gd)
@@ -112,7 +155,7 @@ within 3.5 cm on average (13 cm worst). The arm IK follows a smoothed copy of th
 - `elbow_pole`: where elbows point while reaching. `turn_deg`: how far Q/E twists. `max_tension`: Ctrl strength.
 - `PlayerInput`: `mouse_sensitivity`, `offset_min` / `offset_max` (box the hands stay in), `anchor_rate`.
 - `CameraRig`: `sensitivity`, `distance`, `follow_rate`, `turn_rate`.
-- Controller feel (PadInput): `hand_speed`, `hand_lead`, `arm_tone`, `arm_push`, `leg_tone`, `clamp_at`; Fighter: `hand_muscle_force`, `foot_muscle_force`.
+- Controller feel (PadInput): `hand_speed`, `hand_lead`, `arm_tone`, `arm_push`, `face_range`, `crouch_down_speed`; Fighter: `hand_muscle_force`, `foot_muscle_force`; FighterMoves: `walk_speed`, `step_time`, `balance_force`, `lose_speed`, `shrimp_force`.
 - First person (CameraRig): `fp_look_down`, `fp_follow_rate`. The scene thread's `FighterSkin` puts heads on their own render layer, so a first-person camera can hide just the player's head with `cam.cull_mask &= ~skin.head_layer_mask()`.
 - `upright_*`: the standing assist. Lower it for a wobblier, goofier fighter.
 - `assist_give_up_margin`: how far the center of mass can leave the base before the fighter is allowed to fall.
@@ -125,18 +168,19 @@ The build is split into four workstreams, one Claude thread each, described in t
 per milestone. Movement owns `scripts/fighter.gd` and the intent contract; the other streams add
 their own scripts. Record new intent fields, exposed values and signals in this README.
 
-## Scene and fighter look (workstream 4)
-The main game (F5) runs in the gym with the gi skin on the fighter. `scenes/match.tscn` (F6) shows two skinned fighters in the gym with the mat-edge reset.
+## Scene, fighter look and sound (workstream 4)
+The main game (F5) runs in the gym with the gi skin on the fighter. `scenes/match.tscn` (F6) shows two skinned fighters with the mat-edge reset.
 
-- `scenes/gym.tscn` + `scripts/gym.gd` (`Gym`, extends `Arena`): a 16 x 14 m jiu jitsu gym around the competition square, with padded walls, ceiling lights, windows, a belt rack, a bench, kettlebells and a grappling dummy. Only the floor and the walls collide. The `Mat` body still collides over the middle 12 x 12 m (the size the movement tests are tuned on; a bigger Jolt box changed the ground contacts enough to fail a leg test), and `MatBorder` strips carry the rest.
+Keys anywhere the gym is loaded: **N** cycles the gym (Academy, Garage gym, Competition hall; the choice is saved in `user://settings.cfg`). In the match scene: F / G shove fighter A, R reset (with a whistle), K skin or plain ragdoll, J / L orbit, **1 / 2** change fighter A / B's look.
+
+- `scenes/gym.tscn` + `scripts/gym.gd` (`Gym`, extends `Arena`): three rooms built in code around the competition square. Academy: padded walls, belt rack, posters, trophy shelf, cubbies with bags, ceiling fans, a real-time clock and a round timer. Garage gym: red and black puzzle mats on concrete, block walls, roll-up door, rafters, swinging bulbs, workbench and pegboard, heavy bag, couch, fridge, box fan. Competition hall: the mat under spotlights, bleachers with a crowd that bounces and cheers when a fighter falls or leaves the mat, scoreboards, sponsor boards and banners. Each room has its own room tone. Only the floor and walls collide. The `Mat` body always collides over the middle 12 x 12 m (the size the movement tests are tuned on; a bigger Jolt box changed the ground contacts enough to fail a leg test), and `MatBorder` strips carry the rest. Signal `variant_changed(name)`, `next_variant()`, `react(strength)`.
+- `scripts/fighter_skin.gd` (`FighterSkin`): a lofted body in a gi with a cotton weave, thick collar, lapels, skirt, knee patches, cuffs, patches and a belt with a rank bar; hands whose fingers curl while `intent.grip` is on; feet with toes; a face that blinks, squints and grits its teeth with `intent.tension`, and gapes when the head moves fast; googly eyes. Five looks in `FighterSkin.LOOKS` (`apply_look(name)` before `attach`), each with its own hair, beard, build and voice pitch. It adds no bodies, shapes or joints and never writes to the fighter; it only hides the ragdoll's own debug meshes. Each skin puts its head on its own render layer (`head_layer`, 1-20, set before `attach`), so a first-person camera hides only its own head with `cam.cull_mask &= ~skin.head_layer_mask()`.
+- `scripts/fighter_audio.gd` (`FighterAudio`, added by the skin): reads the ragdoll's motion, so nothing has to report contacts. Parts that stop falling at the mat slap (limbs), thud (torso, head) or pat (feet); the gi rustles with limb speed; the fighter exhales or grunts when it tenses, says "oof" on a hard landing, and yelps on `fell`.
+- `audio/`: 32 sounds, all synthesized by `tools/gen_sounds.py` (no outside assets). Re-run it after tweaking: `python3 tools/gen_sounds.py` (needs numpy).
 - `main.gd` loads the gym instead of building its own mat, adds a `FighterSkin` (head layer 19), and hides the fighter's own head while `cam.first_person` is on.
+- Tests: `tests/test_scene.gd` (facing, no extra physics, skin follows parts, falling makes sounds, every gym builds, edge reset). Screenshots: `tests/screenshot_match.gd`, `tests/screenshot_gym.gd`, `tests/screenshot_looks.gd` (need a window).
 
-- `scenes/arena.tscn` + `scripts/arena.gd` (`Arena`): an 8 x 8 m blue combat area inside a 2 m yellow safety border (`materials/mat.gdshader`), tile seams, start marks, lights, a floor, and `SpawnA` / `SpawnB` facing each other. `watch(fighter)` makes it emit `fighter_left_mat(fighter)` when the pelvis crosses the combat edge; `is_on_mat(point)` and `spawn_transform(i)` are there for the rules thread.
-- `scripts/fighter_skin.gd` (`FighterSkin`): a gi jacket, pants, belt, bare hands and feet, and a face with googly eyes, each piece following one ragdoll part. It adds no bodies, shapes or joints and never writes to the fighter; it only hides the ragdoll's own debug meshes. Colors are exports (`gi_color`, `belt_color`, `skin_tone`, `hair_color`). Each skin puts its head pieces on its own render layer (`head_layer`, 1-20, set before `attach`; the match uses 19 for A and 20 for B), so a first-person camera hides only its own head with `cam.cull_mask &= ~skin.head_layer_mask()`.
-- `scripts/match.gd`: spawns two skinned fighters and resets both to their spawns when one leaves the combat area. Dev keys: F / G shove fighter A, R reset, K skin or plain ragdoll, J / L orbit. Its J / L camera is a debug viewer only; the main (first-person) camera comes from movement.
-- `tests/test_scene.gd`: headless checks (facing, no extra physics, skin follows parts, edge reset). `tests/screenshot_match.gd` saves screenshots (needs a window).
-
-Scene milestones: [x] 1. match scene · [ ] 2. camera (with movement) · [ ] 3. HUD · [x] 4. fighter look (first pass) · [ ] 5. match flow, menus, sound
+Scene milestones: [x] 1. match scene · [ ] 2. camera (with movement) · [ ] 3. HUD · [x] 4. fighter look · [ ] 5. match flow and menus · [x] sound effects and room tone
 
 ## Training partner and AI (workstream 3)
 The main game (F5) puts a training partner in a blue gi in front of you.
@@ -146,12 +190,12 @@ The main game (F5) puts a training partner in a blue gi in front of you.
 | Y (controller) / P (keyboard) | Switch the partner between the dummy and the sparring AI |
 | LT / RT (or the held mouse buttons) | Close a hand. A closed hand that touches the partner grabs whatever it touches (sleeve, lapel, wrist, belt) |
 
-- **Dummy**: a semi-stiff ragdoll. Hands up in a loose guard, arms at 45% tone, half the normal standing assist, never grips back. Grab it and pull, push or drag it down. If it stays down 4 s it pops back up where it started.
-- **Spar**: an AI that writes the same `FighterIntent` you do (it never touches bodies, `Input` or forces; a test checks). It squares up, hand-fights for a sleeve and a lapel, strips your grips, then pulls, pushes, snaps you down, turns you and tries foot sweeps, backing off when its own balance goes. The HUD's bottom line shows what it is doing. Stepping is not in yet (movement milestone 3), so it fights from where it stands.
+- **Dummy**: a semi-stiff ragdoll. Hands up in a loose guard, arms at 45% tone, half the normal standing assist, never grips back. Grab it and pull, push or drag it down. If it stays down 4 s it pops back up where it started (the sparring AI gets 10 s to get up by itself).
+- **Spar**: an AI that writes the same `FighterIntent` you do (it never touches bodies, `Input` or forces; a test checks). It squares up, hand-fights for a sleeve and a lapel, strips your grips, then pulls, pushes, snaps you down, turns you and tries foot sweeps, backing off when its own balance goes. The HUD's bottom line shows what it is doing. It faces you, walks in to grip range when it holds nothing, backs off when crowded, and when it ends up on the mat it sits up and stands back up with the same moves you use.
 - **Grips** (`scripts/grip_system.gd`, `GripSystem`): while `intent.grip[i]` is held and that hand touches another fighter, the hand grabs the spot it touches. A stiff spring (a bit of gi slack, `stiffness`, capped at `max_force` x stamina) pulls hand and spot together, equal and opposite. If the spot is pulled more than `break_stretch` (17 cm) from the hand the grip tears, and the trigger has to be let go and pressed again. A yellow ball marks each held grip. Read it with `holding(fighter, hand)`, `grips_on(fighter)` and the `grabbed` / `released(fighter, hand, torn)` signals.
 - `scripts/partner_ai.gd` (`PartnerAI`): the AI. Feel knobs: `reaction`, `hand_speed`, `arm_tone`, `aggression`, `grip_fighting`, `engage_range`, `dummy_arm_tone`.
 - `scripts/training_partner.gd` (`TrainingPartner`): spawns the partner 0.85 m in front of you, owns the mode switch, the get-back-up and the bottom HUD line. `remove()` takes it off the mat (the solo movement tests do this). `dummy_balance` sets how easily the dummy goes over.
 - `main.gd` adds a `GripSystem` and a `TrainingPartner` and respawns the partner whenever you respawn (R / Back).
 - `tests/test_partner.gd`: headless checks (grabbing, pulling, releasing, tearing, the get-back-up, the AI gets grips and moves you without falling over every round). `tests/screenshot_partner.gd` saves screenshots (needs a window).
 
-AI milestones: [x] 1. dummy partner and grips · [x] 2. standing sparring AI · [ ] 3. footwork (after movement M3) · [ ] 4. ground game and goals (after rules)
+AI milestones: [x] 1. dummy partner and grips · [x] 2. standing sparring AI · [x] 3. footwork (walks in, faces you, gets up) · [ ] 4. ground game and goals (after rules)

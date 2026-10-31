@@ -65,16 +65,29 @@ func _run() -> void:
 		for e in s._follow:
 			worst = maxf(worst, e.node.global_position.distance_to(e.body.global_position))
 	_check("skin follows its parts while falling", worst < 0.05, "worst gap %.3f m" % worst)
+	await _wait(1.5)
+	var played := 0
+	for p in m.skins[0].audio._players:
+		if p.stream:
+			played += 1
+	_check("falling makes sounds", played >= 2, "%d sound players used" % played)
 
 	var head_ok: bool = m.skins[0].head_layer_mask() != m.skins[1].head_layer_mask()
 	for s in m.skins:
 		for e in s._follow:
-			for mi in e.node.get_children():
+			for mi in e.node.find_children("*", "MeshInstance3D", true, false):
 				if (mi.layers == s.head_layer_mask()) != (e.body.name == "head"):
 					head_ok = false
 	_check("each fighter's head on its own layer", head_ok, "")
 
 	var arena: Arena = m.arena
+	if arena is Gym:
+		for v in Gym.NAMES.size():
+			arena.remember_choice = false
+			arena.variant = v
+			await _wait(0.2)
+		_check("every gym variant builds", arena.get_node_or_null("Scenery") != null, arena.variant_name())
+		arena.variant = Gym.Variant.ACADEMY
 	_check("center is on the mat", arena.is_on_mat(Vector3.ZERO), "")
 	_check("past the edge is off the mat", not arena.is_on_mat(Vector3(4.2, 0, 0)) and not arena.is_on_mat(Vector3(0, 0, -4.2)), "")
 	_check("safety border is off the mat", not arena.is_on_mat(Vector3(5.5, 0, 5.5)), "")
