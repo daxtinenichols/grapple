@@ -110,8 +110,6 @@ func _build_part(kind: String, root: Node3D) -> void:
 			_ellipsoid(root, "trim", Vector3(0.05, 0.3, 0.035), Vector3(0.035, -0.01, -0.126), Vector3(0, 0, 28))
 		"chest":
 			_ellipsoid(root, "gi", Vector3(0.48, 0.38, 0.3))
-			# V-neck: skin showing between two thick lapels.
-			_add(root, _prism(), "skin", Vector3(0, 0.1, -0.128), Vector3(0.12, 0.13, 0.02), Vector3(-18, 0, 180))
 			for s in [-1, 1]:
 				_ellipsoid(root, "trim", Vector3(0.06, 0.3, 0.045), Vector3(0.05 * s, 0.0, -0.136), Vector3(8, 0, -22 * s))
 			_box(root, "trim", Vector3(0.2, 0.05, 0.05), Vector3(0, 0.17, 0.05), Vector3(20, 0, 0))
@@ -222,12 +220,6 @@ static func _unit_box() -> Mesh:
 	if not _cache.has("box"):
 		_cache.box = BoxMesh.new()
 	return _cache.box
-
-
-static func _prism() -> Mesh:
-	if not _cache.has("prism"):
-		_cache.prism = PrismMesh.new()
-	return _cache.prism
 
 
 static func _cylinder(top: float, bottom: float) -> Mesh:
