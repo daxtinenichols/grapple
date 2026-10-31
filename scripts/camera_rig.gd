@@ -34,6 +34,9 @@ var yaw := 0.0
 var pitch := 0.3
 var _focus := Vector3(0, 0.9, 0)
 var _snap := true
+var _focus_lag := Vector3(0, 0.9, 0)
+var _yaw_lag := 0.0
+var _last_offset := 0.0
 
 
 func _ready() -> void:
@@ -74,18 +77,45 @@ func _process(delta: float) -> void:
 		return
 	var pelvis: Vector3 = target.parts.pelvis.get_global_transform_interpolated().origin
 	var want := Vector3(pelvis.x, lerpf(focus_height, pelvis.y, 0.5), pelvis.z)
-	var back := target.heading_basis().z
-	var want_yaw := atan2(back.x, back.z) + yaw_offset
+	var body_yaw := _body_yaw(pelvis)
 	if _snap:
 		_focus = want
-		yaw = want_yaw
+		_focus_lag = want
+		yaw = (body_yaw if not is_nan(body_yaw) else 0.0) + yaw_offset
+		_yaw_lag = yaw
 	else:
-		_focus = _focus.lerp(want, 1.0 - exp(-follow_rate * delta))
-		yaw = lerp_angle(yaw, want_yaw, 1.0 - exp(-turn_rate * delta))
+		# Two smoothing stages in a row, so a body bump turns into a gentle
+		# drift instead of a jolt.
+		var k := 1.0 - exp(-follow_rate * delta)
+		_focus_lag = _focus_lag.lerp(want, k)
+		_focus = _focus.lerp(_focus_lag, k)
+		if not is_nan(body_yaw):
+			var kt := 1.0 - exp(-turn_rate * delta)
+			_yaw_lag = lerp_angle(_yaw_lag, body_yaw + yaw_offset, kt)
+		# The D-pad / mouse yaw_offset still answers quickly.
+		_yaw_lag += yaw_offset - _last_offset
+		_last_offset = yaw_offset
+		yaw = lerp_angle(yaw, _yaw_lag, 1.0 - exp(-turn_rate * 2.0 * delta))
+	_last_offset = yaw_offset
 	_snap = false
 	var dir := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
 	global_position = _focus + dir * distance
 	look_at(_focus)
+
+
+## Which way the camera should sit behind, from the fighter's body: the hips'
+## facing when upright; lying down (when that points at the sky or floor), the
+## line from the head down to the hips, so the camera sits behind the head
+## looking down the body. NAN when neither is clear (no change).
+func _body_yaw(pelvis: Vector3) -> float:
+	var fwd: Vector3 = -target.parts.pelvis.get_global_transform_interpolated().basis.z
+	var head: Vector3 = target.parts.head.get_global_transform_interpolated().origin
+	var along := pelvis - head
+	var upright := clampf(fwd.y * fwd.y * 4.0, 0.0, 1.0)  # 0 standing, 1 when facing up or down
+	var d := Vector3(fwd.x, 0, fwd.z).normalized() * (1.0 - upright) + Vector3(along.x, 0, along.z).normalized() * upright
+	if d.length() < 0.3:
+		return NAN
+	return atan2(-d.x, -d.z)
 
 
 func _first_person(delta: float) -> void:
