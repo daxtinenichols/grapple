@@ -20,6 +20,10 @@ signal fell
 @export var upright_max_torque := 450.0
 ## How far (m) the center of mass may leave the base before the assist gives up.
 @export var assist_give_up_margin := 0.06
+## Joint strength multiplier once the fighter has lost its balance. Low = floppy.
+@export var floppy_strength := 0.12
+## How fast (per second) the body goes limp after losing balance.
+@export var go_limp_rate := 6.0
 
 # Part table. pos = center in the standing build pose, joint = anchor point.
 # Limits are degrees per joint-frame axis (x = flex, y = twist, z = side).
@@ -61,6 +65,8 @@ var base_hull: PackedVector2Array = []
 var base_margin := 0.0
 var assist := 1.0
 var has_fallen := false
+## 1 = full motor strength, floppy_strength = limp. Drops when balance is lost.
+var limpness_scale := 1.0
 
 
 func _ready() -> void:
@@ -71,6 +77,7 @@ func _physics_process(_delta: float) -> void:
 	update_base()
 	_drive_joints()
 	_upright_assist()
+	_update_limp()
 	if not has_fallen and parts.head.global_position.y < 0.9:
 		has_fallen = true
 		fell.emit()
@@ -225,7 +232,7 @@ func joint_rotation(j: Dictionary) -> Quaternion:
 
 
 func _drive_joints() -> void:
-	var strength_scale := tension * stamina
+	var strength_scale := tension * stamina * limpness_scale
 	for j in joints:
 		var err: Quaternion = j.target * joint_rotation(j).inverse()
 		if err.w < 0.0:
@@ -318,6 +325,13 @@ func _upright_assist() -> void:
 		w.y = 0.0
 		torque -= w * upright_damping
 		b.apply_torque(torque.limit_length(upright_max_torque) * assist)
+
+
+## Once the balance assist has given up, the motors fade to a fraction of their
+## strength so the fall is a goofy flop instead of a falling plank.
+func _update_limp() -> void:
+	var target := 1.0 if assist > 0.5 else floppy_strength
+	limpness_scale = move_toward(limpness_scale, target, go_limp_rate / Engine.physics_ticks_per_second)
 
 
 # --- Test helpers ------------------------------------------------------------
