@@ -1,7 +1,14 @@
 extends SceneTree
 
-## Saves overview screenshots of the gym from two corners.
+## Saves an overview of each gym variant from the match scene.
 ##   godot --path . --script res://tests/screenshot_gym.gd -- <out_dir>
+
+const VIEWS := [
+	[Vector3(6.5, 2.8, 6.0), Vector3(-1, 0.8, -1.5)],
+	[Vector3(4.6, 2.2, 4.2), Vector3(-1.5, 0.7, -1.5)],
+	[Vector3(9.0, 5.5, 11.0), Vector3(-1, 0.5, -1)],
+]
+
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -13,13 +20,19 @@ func _run() -> void:
 	var m: Node3D = load("res://scenes/match.tscn").instantiate()
 	root.add_child(m)
 	m.set_process(false)
-	await _wait(1.5)
-	m.cam.global_position = Vector3(6.5, 2.8, 6.0)
-	m.cam.look_at(Vector3(-1, 0.8, -1.5))
-	await _shot(out + "/gym.png")
-	m.cam.global_position = Vector3(-6.5, 2.6, -5.5)
-	m.cam.look_at(Vector3(1.5, 0.8, 1.5))
-	await _shot(out + "/gym_back.png")
+	m.arena.remember_choice = false
+	for v in 3:
+		m.arena.variant = v
+		await _wait(1.0)
+		m.cam.global_position = VIEWS[v][0]
+		m.cam.look_at(VIEWS[v][1])
+		await _shot(out + "/gym_%d.png" % v)
+	m.arena.variant = 2
+	m.cam.global_position = Vector3(-12.5, 3.2, 6.0)
+	m.cam.look_at(Vector3(2, 0.6, -1))
+	m.fighters[0].shove(Vector3(0, 0, -220))
+	await _wait(1.2)
+	await _shot(out + "/gym_hall_side.png")
 	quit()
 
 

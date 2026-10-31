@@ -11,6 +11,10 @@ uniform float combat_half = 4.0;
 uniform float tile = 1.0;
 uniform float seam_width = 0.008;
 uniform float start_mark_z = 0.9;
+// Puzzle-mat look: every other tile in the combat area takes this color (alpha = amount).
+uniform vec4 checker_color : source_color = vec4(0.0);
+// How much each tile's brightness varies, so the floor doesn't look printed.
+uniform float tile_jitter = 0.05;
 
 varying vec3 world_pos;
 varying float top;
@@ -31,6 +35,11 @@ void fragment() {
 	vec2 p = world_pos.xz;
 	float inside = box_mask(p, vec2(combat_half));
 	vec3 c = mix(safety_color, combat_color, inside * top);
+	vec2 cell = floor(p / tile);
+	float checker = mod(cell.x + cell.y, 2.0) * checker_color.a * inside * top;
+	c = mix(c, checker_color.rgb, checker);
+	float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+	c *= 1.0 + (h - 0.5) * 2.0 * tile_jitter * top;
 
 	vec2 f = abs(fract(p / tile + 0.5) - 0.5) * tile;
 	float d = min(f.x, f.y);
