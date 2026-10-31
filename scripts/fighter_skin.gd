@@ -21,10 +21,11 @@ extends Node3D
 @export var pupil_travel := 0.013
 @export var pupil_stiffness := 60.0
 @export var pupil_damping := 5.0
-## Render layer for the head pieces. A first-person camera on this fighter can
-## leave it out (camera.cull_mask &= ~FighterSkin.HEAD_LAYER) so it doesn't see
-## the inside of its own face; the head still casts a shadow.
-const HEAD_LAYER := 1 << 19
+## Render layer (1-20) for this fighter's head pieces. Give each fighter its own,
+## so a first-person camera can leave out only its own head
+## (camera.cull_mask &= ~skin.head_layer_mask()); the head still casts a shadow.
+## Set it before attach().
+@export_range(1, 20) var head_layer := 20
 
 var fighter: Fighter
 ## Each entry: {node: Node3D, body: RigidBody3D}
@@ -56,11 +57,16 @@ func attach(f: Fighter) -> void:
 		_build_part(part_name.trim_prefix("l_").trim_prefix("r_"), root)
 		if part_name == "head":
 			for mi in root.get_children():
-				mi.layers = HEAD_LAYER
+				mi.layers = head_layer_mask()
 		_follow.append({"node": root, "body": body})
 	f.tree_exiting.connect(queue_free)
 	_apply_visibility()
 	_sync()
+
+
+## Bit mask of head_layer, for a camera's cull_mask.
+func head_layer_mask() -> int:
+	return 1 << (head_layer - 1)
 
 
 func _process(delta: float) -> void:

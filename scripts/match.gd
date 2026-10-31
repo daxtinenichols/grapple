@@ -50,6 +50,7 @@ func spawn_fighters() -> void:
 		skin.belt_color = BELTS[i]
 		skin.skin_tone = SKINS[i]
 		skin.hair_color = HAIR[i]
+		skin.head_layer = 19 + i
 		add_child(skin)
 		skin.attach(f)
 		skin.show_ragdoll = show_ragdoll

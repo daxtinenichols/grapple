@@ -61,12 +61,13 @@ func _run() -> void:
 			worst = maxf(worst, e.node.global_position.distance_to(e.body.global_position))
 	_check("skin follows its parts while falling", worst < 0.05, "worst gap %.3f m" % worst)
 
-	var head_ok := true
-	for e in m.skins[0]._follow:
-		for mi in e.node.get_children():
-			if (mi.layers == FighterSkin.HEAD_LAYER) != (e.body.name == "head"):
-				head_ok = false
-	_check("only head pieces on the head layer", head_ok, "")
+	var head_ok: bool = m.skins[0].head_layer_mask() != m.skins[1].head_layer_mask()
+	for s in m.skins:
+		for e in s._follow:
+			for mi in e.node.get_children():
+				if (mi.layers == s.head_layer_mask()) != (e.body.name == "head"):
+					head_ok = false
+	_check("each fighter's head on its own layer", head_ok, "")
 
 	var arena: Arena = m.arena
 	_check("center is on the mat", arena.is_on_mat(Vector3.ZERO), "")
