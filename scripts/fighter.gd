@@ -21,7 +21,7 @@ signal fell
 ## Knee bend (degrees) of a leg clamp. Kept under 90: see _build.
 @export var clamp_knee_deg := 85.0
 ## Force (N) of a full foot_effort push.
-@export var foot_muscle_force := 260.0
+@export var foot_muscle_force := 150
 ## Force (N) of a full hand_effort push.
 @export var hand_muscle_force := 170.0
 ## How fast (1/s) the arm IK's copy of the chest follows the real chest.
@@ -305,6 +305,12 @@ func set_target(part: String, euler_deg: Vector3) -> void:
 func set_target_quat(part: String, q: Quaternion) -> void:
 	if _joint_by_name.has(part):
 		_joint_by_name[part].target = q
+
+
+## The smoothed chest frame the arm IK works in. Controllers that place the hands
+## relative to the body should use it too, so they agree with the IK.
+func chest_frame() -> Basis:
+	return Basis(_ik_chest) if not _ik_chest_fresh else parts.chest.global_basis.orthonormalized()
 
 
 ## Yaw-only frame of the fighter: -Z is where the pelvis faces, Y is world up.

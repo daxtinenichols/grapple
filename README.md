@@ -10,25 +10,23 @@ Godot 4.4+ with Jolt physics at 120 ticks per second.
 Whichever device you touched last drives the fighter.
 
 ### Controller (Xbox 360 layout, the main scheme)
-The arms are muscle-driven: a stick pushes its hand with a force (pulling back on the
-shoulder), and the arm is otherwise loose, so it swings, sags and stays roughly where
-you leave it.
+Both thumbs stay on the sticks; the bumpers (index fingers) pick what the sticks move.
 
 | Input | Action |
 | --- | --- |
-| Left / right stick | Push the left / right hand: sideways (relative to the camera) and up / down |
-| Hold LB / RB | That stick pushes forward / pulls back instead of up / down |
-| LT / RT | Close the left / right hand. Works in every mode, so grips hold through a throw. |
+| Left / right stick | Move the left / right hand relative to your chest: sideways, and up = push forward, down = pull back. Hands sit at chest height; lean to reach lower. The hand stays where you leave it. |
+| Hold RB (body) | Left stick shifts your weight over your feet. Right stick: up / down leans the torso forward / back, left / right turns the shoulders. |
+| Hold LB (legs) | Sticks move the left / right foot relative to your hips: up pushes it out the way the knee points, down pulls the heel in (past 60% it clamps the knee), sideways is sideways. Works the same standing or on your back. |
+| LT / RT | Close the left / right hand, in every mode, so a grip holds through a throw |
 | A (hold) | Tense up |
-| Hold X (body) | Left stick shifts your weight over your feet. Right stick: up / down leans the torso forward / back, left / right turns the shoulders. |
-| Hold Y (legs) | Sticks push the left / right foot (and lean you onto the other leg). LB / RB clamp (bend) that leg. |
-| D-pad left / right | Swing the camera around the fighter. Up / down: zoom |
+| D-pad left / right | Third person: swing the camera around. Up / down: zoom |
+| Start (or V) | First person / third person |
 | Back | Reset |
 
-While X or Y is held the arms stay loosely where they are.
-The camera follows on its own and eases round behind the fighter as they turn.
-Stepping is not in yet: lifting a foot while standing usually ends in a fall. The legs
-mode is mostly for the ground (milestone 5).
+The camera starts in first person, just in front of the head, smoothed so the body's
+wobble doesn't shake it. Arms run at 70% tone with a light muscle push; legs go loose
+(15%) while their stick moves them. Stepping is not in yet, so lifting a foot while
+standing usually ends in a fall.
 
 ### Mouse and keyboard (fallback)
 Click the game window to take the mouse (Esc gives it back). Until then the arms hang.
@@ -113,7 +111,8 @@ within 3.5 cm on average (13 cm worst). The arm IK follows a smoothed copy of th
 - `elbow_pole`: where elbows point while reaching. `turn_deg`: how far Q/E twists. `max_tension`: Ctrl strength.
 - `PlayerInput`: `mouse_sensitivity`, `offset_min` / `offset_max` (box the hands stay in), `anchor_rate`.
 - `CameraRig`: `sensitivity`, `distance`, `follow_rate`, `turn_rate`.
-- Muscle arms: `hand_muscle_force` (Fighter), `arm_tone` and `settle_rate` (PadInput).
+- Controller feel (PadInput): `hand_speed`, `hand_lead`, `arm_tone`, `arm_push`, `leg_tone`, `clamp_at`; Fighter: `hand_muscle_force`, `foot_muscle_force`.
+- First person (CameraRig): `fp_look_down`, `fp_follow_rate`. The scene thread's `FighterSkin` puts heads on their own render layer, so a first-person camera can hide just the player's head with `cam.cull_mask &= ~skin.head_layer_mask()`.
 - `upright_*`: the standing assist. Lower it for a wobblier, goofier fighter.
 - `assist_give_up_margin`: how far the center of mass can leave the base before the fighter is allowed to fall.
 - Per-joint `strength` and `lim` in the BODY / LIMB tables.

@@ -120,12 +120,12 @@ func _process(_delta: float) -> void:
 		var it := fighter.intent
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 		var arms := player.controlled()
-		var help := "controller: sticks push the hands   hold LB/RB: stick pushes / pulls   LT/RT grip   A tense   X/B turn   D-pad camera   Back reset" if pad_mode else \
+		var help := "controller: sticks move the hands (sideways, push / pull)   hold RB: body (weight, lean, turn)   hold LB: legs   LT/RT grip   A tense\nD-pad camera   Start first / third person   Back reset" if pad_mode else \
 			"%s\nhold left / right mouse + move: move that arm (both buttons: both arms)   + wheel: reach\nno button: mouse turns the camera, wheel zooms   Q/E turn   WASD weight   Ctrl tense" % [
 			"" if captured else ">>> click the window to take the mouse (or pick up the controller) <<<"]
 		hud.text = "%s\nF shove   G big shove   R reset   M reach drill   Esc free mouse\n\n%s   grips %s %s   weight (%.1f, %.1f)   base margin %.2f m   assist %.0f%%   tension %.1f   %s" % [
 			help,
-			"controller" if pad_mode else ("moving both arms" if arms[0] and arms[1] else "moving left arm" if arms[0] else "moving right arm" if arms[1] else "moving camera"),
+			("controller: " + PadInput.Mode.keys()[pad.mode].to_lower()) if pad_mode else ("moving both arms" if arms[0] and arms[1] else "moving left arm" if arms[0] else "moving right arm" if arms[1] else "moving camera"),
 			"L" if it.grip[0] else "-", "R" if it.grip[1] else "-",
 			it.weight_shift.x, it.weight_shift.y,
 			fighter.base_margin, fighter.assist * 100.0, fighter.tension, dev.drill_status()]

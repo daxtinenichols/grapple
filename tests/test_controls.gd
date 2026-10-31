@@ -6,8 +6,9 @@ extends SceneTree
 ## 3. Q/E turn twists the chest, 4. the hands touch three drill balls in a row
 ## without the fighter falling, 5. mouse buttons pick which arm the mouse moves,
 ## 6. the arms stay calm while holding a guard, 7. controller sticks push the
-## hands (muscle arms) without dragging the body, 8. grips hold in every
-## controller mode, 9. X mode shifts weight and leans the torso.
+## hands without dragging the body, 8. grips hold in every controller mode,
+## 9. RB (body) shifts weight and leans the torso, 10. LB (legs) moves a foot
+## and clamps a knee, also lying down, without sliding the body around.
 
 var failures := 0
 
@@ -92,31 +93,30 @@ func _run() -> void:
 	_check("both buttons + mouse up raise both hands",
 		p.hand_offset[0].y > l0.y + 0.15 and p.hand_offset[1].y > r0.y + 0.15, "")
 
-	# Controller: muscle arms. Right stick right pushes the right hand right,
-	# it stays roughly there after letting go, and the body doesn't get dragged.
+	# Controller arms: right stick right moves the right hand right, it stays
+	# there after letting go, and the body doesn't get dragged.
 	p.fighter = null
 	var pad: PadInput = main.pad
 	pad.set_physics_process(false)
 	pad.fighter = f
 	var dt := 1.0 / Engine.physics_ticks_per_second
 	var idle: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO]
-	var no: Array[bool] = [false, false]
 	for k in 240:
-		pad.apply_sticks(idle, no, dt)
+		pad.apply_sticks(idle, dt)
 		await physics_frame
 	var pel0: Vector3 = f.parts.pelvis.global_position
 	var h0 := _hand_local(f, "r_hand")
 	var push: Array[Vector2] = [Vector2.ZERO, Vector2(1, 0)]
 	for k in 60:
-		pad.apply_sticks(push, no, dt)
+		pad.apply_sticks(push, dt)
 		await physics_frame
 	var moved := _hand_local(f, "r_hand").x - h0.x
-	_check("right stick pushes the right hand right", moved > 0.2, "moved %.2f m in 0.5 s" % moved)
+	_check("right stick moves the right hand right", moved > 0.2, "moved %.2f m in 0.5 s" % moved)
 	for k in 120:
-		pad.apply_sticks(idle, no, dt)
+		pad.apply_sticks(idle, dt)
 		await physics_frame
 	var kept := _hand_local(f, "r_hand").x - h0.x
-	_check("hand stays roughly where it was pushed", kept > moved * 0.5, "%.2f m from the guard 1 s later" % kept)
+	_check("hand stays where it was moved", kept > moved * 0.7, "%.2f m from the guard 1 s later" % kept)
 	var drift: float = (f.parts.pelvis.global_position - pel0).length()
 	_check("pushing an arm doesn't move the body", drift < 0.05 and not f.has_fallen, "pelvis moved %.3f m" % drift)
 
@@ -130,11 +130,11 @@ func _run() -> void:
 	_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)
 	await _wait(0.1)
 	_check("right trigger grips", f.intent.grip[1], "")
-	_button(JOY_BUTTON_Y, true)
+	_button(JOY_BUTTON_LEFT_SHOULDER, true)
 	await _wait(0.1)
 	_check("grip holds in legs mode", f.intent.grip[1] and f.intent.focus == FighterIntent.Focus.LEGS, "")
-	_button(JOY_BUTTON_Y, false)
-	_button(JOY_BUTTON_X, true)
+	_button(JOY_BUTTON_LEFT_SHOULDER, false)
+	_button(JOY_BUTTON_RIGHT_SHOULDER, true)
 	await _wait(0.1)
 	_check("grip holds in body mode", f.intent.grip[1] and f.intent.focus == FighterIntent.Focus.HIPS, "")
 	_axis(JOY_AXIS_TRIGGER_RIGHT, 0.0)
@@ -146,16 +146,50 @@ func _run() -> void:
 	_axis(JOY_AXIS_LEFT_X, 1.0)
 	await _wait(1.5)
 	var c1: Vector3 = f.heading_basis().inverse() * f.com
-	_check("X + left stick right shifts weight right", c1.x - c0.x > 0.025 and not f.has_fallen,
+	_check("RB + left stick right shifts weight right", c1.x - c0.x > 0.025 and not f.has_fallen,
 		"center of mass moved %.3f m" % (c1.x - c0.x))
 	_axis(JOY_AXIS_LEFT_X, 0.0)
 	_axis(JOY_AXIS_RIGHT_Y, -1.0)
 	await _wait(1.5)
 	var head: Vector3 = f.heading_basis().inverse() * (f.parts.head.global_position - f.parts.pelvis.global_position)
-	_check("X + right stick up leans forward without falling", head.z < -0.15 and not f.has_fallen,
+	_check("RB + right stick up leans forward without falling", head.z < -0.15 and not f.has_fallen,
 		"head %.2f m ahead of the hips" % -head.z)
 	_axis(JOY_AXIS_RIGHT_Y, 0.0)
-	_button(JOY_BUTTON_X, false)
+	_button(JOY_BUTTON_RIGHT_SHOULDER, false)
+
+	# Legs on the ground: knock the fighter down, then work the legs. Let the
+	# fake joypad events land first: they switch the controller back on.
+	await _wait(0.1)
+	pad.set_physics_process(false)
+	f.shove(Vector3(0, 0, 220))
+	var lying: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO]
+	pad.mode = PadInput.Mode.LEGS
+	for k in 480:
+		pad.drive(lying, dt)
+		await physics_frame
+	var pel1: Vector3 = f.parts.pelvis.global_position
+	var foot0: Vector3 = f.parts.r_foot.global_position - f.parts.pelvis.global_position
+	var out: Array[Vector2] = [Vector2.ZERO, Vector2(0, 1)]
+	for k in 60:
+		pad.drive(out, dt)
+		await physics_frame
+	var foot1: Vector3 = f.parts.r_foot.global_position - f.parts.pelvis.global_position
+	_check("LB + right stick up moves the right foot when lying down", foot1.distance_to(foot0) > 0.15,
+		"foot moved %.2f m" % foot1.distance_to(foot0))
+	var curl: Array[Vector2] = [Vector2.ZERO, Vector2(0, -1)]
+	for k in 90:
+		pad.drive(curl, dt)
+		await physics_frame
+	var knee := rad_to_deg(f.joint_rotation(f._joint_by_name["r_shin"]).get_angle())
+	_check("pulling the stick back clamps the knee", f.intent.leg_clamp[1] and knee > 50.0, "knee bent %.0f deg" % knee)
+	for rep in 3:
+		for side in [Vector2(1, 0), Vector2(-1, 0)]:
+			var wiggle: Array[Vector2] = [side, side]
+			for k in 60:
+				pad.drive(wiggle, dt)
+				await physics_frame
+	var slid: float = (f.parts.pelvis.global_position - pel1).length()
+	_check("wiggling the legs on the ground doesn't slide the body far", slid < 0.25, "pelvis moved %.2f m" % slid)
 
 	print("FAILURES: ", failures)
 	quit(failures)
