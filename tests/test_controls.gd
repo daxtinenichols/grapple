@@ -156,6 +156,18 @@ func _run() -> void:
 		"head %.2f m ahead of the hips" % -head.z)
 	_axis(JOY_AXIS_RIGHT_Y, 0.0)
 	_button(JOY_BUTTON_RIGHT_SHOULDER, false)
+	await _wait(1.0)
+	var c2: Vector3 = f.heading_basis().inverse() * f.com
+	_check("weight and lean stay put after letting go of RB",
+		f.intent.weight_shift.x > 0.5 and f.intent.torso_lean > 0.5 and c2.x - c0.x > 0.02 and not f.has_fallen,
+		"shift %.2f, lean %.2f" % [f.intent.weight_shift.x, f.intent.torso_lean])
+	_button(JOY_BUTTON_RIGHT_SHOULDER, true)
+	_button(JOY_BUTTON_RIGHT_STICK, true)
+	await _wait(0.1)
+	_button(JOY_BUTTON_RIGHT_STICK, false)
+	_button(JOY_BUTTON_RIGHT_SHOULDER, false)
+	await _wait(0.1)
+	_check("RB + stick click recentres the body", f.intent.weight_shift == Vector2.ZERO and f.intent.torso_lean == 0.0, "")
 
 	# Legs on the ground: knock the fighter down, then work the legs. Let the
 	# fake joypad events land first: they switch the controller back on.
@@ -182,6 +194,22 @@ func _run() -> void:
 		await physics_frame
 	var knee := rad_to_deg(f.joint_rotation(f._joint_by_name["r_shin"]).get_angle())
 	_check("pulling the stick back clamps the knee", f.intent.leg_clamp[1] and knee > 50.0, "knee bent %.0f deg" % knee)
+	for k in 120:
+		pad.drive(lying, dt)
+		await physics_frame
+	knee = rad_to_deg(f.joint_rotation(f._joint_by_name["r_shin"]).get_angle())
+	_check("the leg stays bent after letting go of the stick", knee > 50.0, "knee bent %.0f deg" % knee)
+	var stand: Array[bool] = [false, true]
+	pad.drive(lying, dt, stand)
+	await physics_frame
+	for k in 120:
+		pad.drive(lying, dt)
+		await physics_frame
+	knee = rad_to_deg(f.joint_rotation(f._joint_by_name["r_shin"]).get_angle())
+	_check("clicking the stick straightens the leg again", knee < 25.0, "knee bent %.0f deg" % knee)
+	for k in 90:
+		pad.drive(curl, dt)
+		await physics_frame
 	for rep in 3:
 		for side in [Vector2(1, 0), Vector2(-1, 0)]:
 			var wiggle: Array[Vector2] = [side, side]
@@ -190,6 +218,28 @@ func _run() -> void:
 				await physics_frame
 	var slid: float = (f.parts.pelvis.global_position - pel1).length()
 	_check("wiggling the legs on the ground doesn't slide the body far", slid < 0.25, "pelvis moved %.2f m" % slid)
+
+	# Both bumpers on the ground: left stick moves the hips, right stick pulled
+	# back clamps both legs (a closed guard squeeze).
+	pad.mode = PadInput.Mode.BOTH
+	var both: Array[Vector2] = [Vector2(1, 0), Vector2(0, -1)]
+	for k in 90:
+		pad.drive(both, dt)
+		await physics_frame
+	var kl := rad_to_deg(f.joint_rotation(f._joint_by_name["l_shin"]).get_angle())
+	var kr := rad_to_deg(f.joint_rotation(f._joint_by_name["r_shin"]).get_angle())
+	_check("RB + LB: left stick moves the hips, right stick clamps both legs",
+		f.intent.weight_shift.x > 0.5 and kl > 50.0 and kr > 50.0,
+		"shift %.2f, knees %.0f / %.0f deg" % [f.intent.weight_shift.x, kl, kr])
+	var clicks: Array[bool] = [true, true]
+	pad.drive(lying, dt, clicks)
+	await physics_frame
+	for k in 120:
+		pad.drive(lying, dt)
+		await physics_frame
+	kl = rad_to_deg(f.joint_rotation(f._joint_by_name["l_shin"]).get_angle())
+	_check("RB + LB + stick clicks recentre the hips and straighten the legs",
+		f.intent.weight_shift == Vector2.ZERO and kl < 25.0, "left knee %.0f deg" % kl)
 
 	print("FAILURES: ", failures)
 	quit(failures)

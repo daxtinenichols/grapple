@@ -15,16 +15,17 @@ Both thumbs stay on the sticks; the bumpers (index fingers) pick what the sticks
 | Input | Action |
 | --- | --- |
 | Left / right stick | Move the left / right hand relative to your chest: sideways, and up = push forward, down = pull back. Hands sit at chest height; lean to reach lower. The hand stays where you leave it. |
-| Hold RB (body) | Left stick shifts your weight over your feet. Right stick: up / down leans the torso forward / back, left / right turns the shoulders. |
-| Hold LB (legs) | Sticks move the left / right foot relative to your hips: up pushes it out the way the knee points, down pulls the heel in (past 60% it clamps the knee), sideways is sideways. Works the same standing or on your back. |
+| Hold RB (body) | Left stick shifts your weight over your feet. Right stick: up / down leans the torso forward / back, left / right turns the shoulders. They move at a steady speed and stay where you leave them, in every mode. Click either stick to recentre. |
+| Hold LB (legs) | Sticks move the left / right foot relative to your hips: up pushes it out the way the knee points, down pulls the heel in (past 60% it clamps the knee), sideways is sideways. Works the same standing or on your back. Each leg stays in the pose you leave it in (a clamped knee stays bent). Click a stick to straighten that leg. |
+| Hold RB + LB (body and legs) | Left stick shifts your weight / hips as in body mode. Right stick moves both legs together the way one stick moves a leg in legs mode, so pulling it down clamps both knees (a closed guard squeeze) while the left stick moves your hips. Click the left stick to recentre the hips, the right stick to straighten both legs. Clamping both knees while standing drops you. |
 | LT / RT | Close the left / right hand, in every mode, so a grip holds through a throw |
 | A (hold) | Tense up |
 | D-pad left / right | Third person: swing the camera around. Up / down: zoom |
 | Start (or V) | First person / third person |
 | Back | Reset |
 
-The camera starts in first person, just in front of the head, smoothed so the body's
-wobble doesn't shake it. Arms run at 70% tone with a light muscle push; legs go loose
+The camera starts in third person, close behind and a little above you so you can see
+your whole body; first person (Start or V) sits just in front of the head. Arms run at 70% tone with a light muscle push; legs go loose
 (15%) while their stick moves them. Stepping is not in yet, so lifting a foot while
 standing usually ends in a fall.
 
