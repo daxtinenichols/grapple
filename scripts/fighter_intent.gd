@@ -31,8 +31,18 @@ var grip: Array[bool] = [false, false]
 var weight_shift := Vector2.ZERO
 ## Shoulder turn, -1 (left) .. 1 (right).
 var turn := 0.0
+## Torso lean, -1 (back) .. 1 (forward).
+var torso_lean := 0.0
 ## Body tension, 0 relaxed .. 1 fully tense.
 var tension := 0.0
+
+## Muscle push on each foot, world space, length 0..1 (1 = foot_muscle_force).
+## The push pulls back on the hip.
+var foot_effort: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
+## How firmly each leg holds its pose, 0 (limp) .. 1 (full strength).
+var leg_tone: Array[float] = [1.0, 1.0]
+## Clamp: bend that knee hard (hooks, closed guard, squeeze).
+var leg_clamp: Array[bool] = [false, false]
 
 ## Reserved for ground mode (milestone 5). Not read yet.
 var hip_target := Vector3.ZERO
@@ -50,6 +60,10 @@ func reset() -> void:
 	grip = [false, false]
 	weight_shift = Vector2.ZERO
 	turn = 0.0
+	torso_lean = 0.0
+	foot_effort = [Vector3.ZERO, Vector3.ZERO]
+	leg_tone = [1.0, 1.0]
+	leg_clamp = [false, false]
 	tension = 0.0
 	hip_active = false
 	foot_active = [false, false]

@@ -6,7 +6,8 @@ extends SceneTree
 ## 3. Q/E turn twists the chest, 4. the hands touch three drill balls in a row
 ## without the fighter falling, 5. mouse buttons pick which arm the mouse moves,
 ## 6. the arms stay calm while holding a guard, 7. controller sticks push the
-## hands (muscle arms) without dragging the body.
+## hands (muscle arms) without dragging the body, 8. grips hold in every
+## controller mode, 9. X mode shifts weight and leans the torso.
 
 var failures := 0
 
@@ -119,8 +120,61 @@ func _run() -> void:
 	var drift: float = (f.parts.pelvis.global_position - pel0).length()
 	_check("pushing an arm doesn't move the body", drift < 0.05 and not f.has_fallen, "pelvis moved %.3f m" % drift)
 
+	# Controller modes, driven through fake joypad events. Grips hold in every mode.
+	main = await _fresh()
+	f = main.fighter
+	main.player.set_physics_process(false)
+	pad = main.pad
+	pad.set_physics_process(true)
+	await _wait(1.0)
+	_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _wait(0.1)
+	_check("right trigger grips", f.intent.grip[1], "")
+	_button(JOY_BUTTON_Y, true)
+	await _wait(0.1)
+	_check("grip holds in legs mode", f.intent.grip[1] and f.intent.focus == FighterIntent.Focus.LEGS, "")
+	_button(JOY_BUTTON_Y, false)
+	_button(JOY_BUTTON_X, true)
+	await _wait(0.1)
+	_check("grip holds in body mode", f.intent.grip[1] and f.intent.focus == FighterIntent.Focus.HIPS, "")
+	_axis(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+
+	# Body mode: left stick shifts the weight that way, right stick leans the torso.
+	var c0: Vector3 = f.heading_basis().inverse() * f.com
+	main.cam.yaw_offset = 0.0
+	main.cam.snap()
+	_axis(JOY_AXIS_LEFT_X, 1.0)
+	await _wait(1.5)
+	var c1: Vector3 = f.heading_basis().inverse() * f.com
+	_check("X + left stick right shifts weight right", c1.x - c0.x > 0.025 and not f.has_fallen,
+		"center of mass moved %.3f m" % (c1.x - c0.x))
+	_axis(JOY_AXIS_LEFT_X, 0.0)
+	_axis(JOY_AXIS_RIGHT_Y, -1.0)
+	await _wait(1.5)
+	var head: Vector3 = f.heading_basis().inverse() * (f.parts.head.global_position - f.parts.pelvis.global_position)
+	_check("X + right stick up leans forward without falling", head.z < -0.15 and not f.has_fallen,
+		"head %.2f m ahead of the hips" % -head.z)
+	_axis(JOY_AXIS_RIGHT_Y, 0.0)
+	_button(JOY_BUTTON_X, false)
+
 	print("FAILURES: ", failures)
 	quit(failures)
+
+
+func _axis(axis: JoyAxis, v: float) -> void:
+	var ev := InputEventJoypadMotion.new()
+	ev.device = 0
+	ev.axis = axis
+	ev.axis_value = v
+	Input.parse_input_event(ev)
+
+
+func _button(b: JoyButton, down: bool) -> void:
+	var ev := InputEventJoypadButton.new()
+	ev.device = 0
+	ev.button_index = b
+	ev.pressed = down
+	Input.parse_input_event(ev)
 
 
 func _hand_local(f: Fighter, hand: String) -> Vector3:

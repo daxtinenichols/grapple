@@ -18,14 +18,17 @@ you leave it.
 | --- | --- |
 | Left / right stick | Push the left / right hand: sideways (relative to the camera) and up / down |
 | Hold LB / RB | That stick pushes forward / pulls back instead of up / down |
-| LT / RT | Close the left / right hand |
+| LT / RT | Close the left / right hand. Works in every mode, so grips hold through a throw. |
 | A (hold) | Tense up |
-| X / B | Turn the shoulders left / right |
+| Hold X (body) | Left stick shifts your weight over your feet. Right stick: up / down leans the torso forward / back, left / right turns the shoulders. |
+| Hold Y (legs) | Sticks push the left / right foot (and lean you onto the other leg). LB / RB clamp (bend) that leg. |
 | D-pad left / right | Swing the camera around the fighter. Up / down: zoom |
 | Back | Reset |
 
+While X or Y is held the arms stay loosely where they are.
 The camera follows on its own and eases round behind the fighter as they turn.
-Legs, hips and stepping are not on the controller yet; WASD still shifts weight.
+Stepping is not in yet: lifting a foot while standing usually ends in a fall. The legs
+mode is mostly for the ground (milestone 5).
 
 ### Mouse and keyboard (fallback)
 Click the game window to take the mouse (Esc gives it back). Until then the arms hang.
@@ -63,8 +66,12 @@ Positions are world space; arrays are `[left, right]`.
 | `hand_effort` | `Vector3[2]`, length 0..1 | Muscle push on each hand (x `hand_muscle_force` N); the equal and opposite force goes on the shoulder | M2 |
 | `arm_tone` | `float[2]`, 0..1 | How firmly each arm holds its pose; scales the arm joint motors | M2 |
 | `grip` | `bool[2]` | Hand closed | M4 (grips) |
-| `weight_shift` | `Vector2`, -1..1 | Lean/step direction in the heading frame: x right, y forward | M3 |
+| `weight_shift` | `Vector2`, -1..1 | Shift the hips over the feet in the heading frame (x right, y forward), up to `weight_shift_deg`; stepping comes in M3 | M2 |
 | `turn` | float, -1..1 | Shoulder turn, left to right (25 deg at the abdomen and chest each) | M1 |
+| `torso_lean` | float, -1..1 | Lean back .. forward (`lean_deg` at the abdomen, 70% at the chest) | M2 |
+| `foot_effort` | `Vector3[2]`, length 0..1 | Muscle push on each foot (x `foot_muscle_force` N), reaction on the hip | M2 |
+| `leg_tone` | `float[2]`, 0..1 | How firmly each leg holds its pose | M2 |
+| `leg_clamp` | `bool[2]` | Bend that knee hard (hooks, closed guard) | M2 |
 | `tension` | float, 0..1 | Relaxed to fully tense; strength x1.0 to x`max_tension` | M1 |
 | `hip_target`, `hip_active`, `foot_target`, `foot_active` | | Reserved for ground mode | M5 |
 

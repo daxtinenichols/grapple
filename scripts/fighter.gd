@@ -14,6 +14,14 @@ signal fell
 @export var max_tension := 1.8
 ## How far (degrees) Q/E twists the abdomen and the chest each.
 @export var turn_deg := 25.0
+## How far (degrees) a full torso lean bends the abdomen (the chest bends 70% of it).
+@export var lean_deg := 15.0
+## How far (degrees) a full weight shift tilts the legs at the hips and ankles.
+@export var weight_shift_deg := 4.0
+## Knee bend (degrees) of a leg clamp. Kept under 90: see _build.
+@export var clamp_knee_deg := 85.0
+## Force (N) of a full foot_effort push.
+@export var foot_muscle_force := 260.0
 ## Force (N) of a full hand_effort push.
 @export var hand_muscle_force := 170.0
 ## How fast (1/s) the arm IK's copy of the chest follows the real chest.
@@ -84,7 +92,8 @@ var _joint_by_name := {}
 var _arms: Array[Dictionary] = []
 ## The hidden target skeleton for each arm, for the overlay: shoulder, elbow, hand target.
 var arm_ik: Array[Dictionary] = [{}, {}]
-var _last_turn := 0.0
+var _last_torso := Vector2.ZERO
+var _last_legs := [Vector2.ZERO, false, false]
 var _ik_chest := Quaternion.IDENTITY
 var _ik_chest_fresh := true
 
@@ -265,6 +274,7 @@ func _make_joint(d: Dictionary, parent_rot: Basis) -> void:
 		"target": Quaternion.IDENTITY, "strength": d.strength,
 		# Which arm this joint belongs to (0 left, 1 right), -1 if none.
 		"arm": (0 if d.side < 0 else 1) if d.name.substr(2) in ["upper_arm", "forearm", "hand"] else -1,
+		"leg": (0 if d.side < 0 else 1) if d.name.substr(2) in ["thigh", "shin", "foot"] else -1,
 	}
 	joints.append(entry)
 	_joint_by_name[d.name] = entry
@@ -312,11 +322,16 @@ func _apply_intent() -> void:
 	tension = lerpf(1.0, max_tension, clampf(intent.tension, 0.0, 1.0))
 	# Torso and idle arms are only touched when the intent changes, so poses set
 	# with set_target (tests, later stance code) survive while the intent is idle.
-	var turn := clampf(intent.turn, -1.0, 1.0)
-	if turn != _last_turn:
-		_last_turn = turn
-		set_target("abdomen", Vector3(0, -turn * turn_deg, 0))
-		set_target("chest", Vector3(0, -turn * turn_deg, 0))
+	var torso := Vector2(clampf(intent.turn, -1.0, 1.0), clampf(intent.torso_lean, -1.0, 1.0))
+	if torso != _last_torso:
+		_last_torso = torso
+		# Forward lean is negative flex for the spine (positive tips it back).
+		set_target("abdomen", Vector3(-torso.y * lean_deg, -torso.x * turn_deg, 0))
+		set_target("chest", Vector3(-torso.y * lean_deg * 0.7, -torso.x * turn_deg, 0))
+	var legs := [intent.weight_shift.limit_length(1.0), intent.leg_clamp[0], intent.leg_clamp[1]]
+	if legs != _last_legs:
+		_last_legs = legs
+		_set_leg_targets(legs[0], [legs[1], legs[2]])
 	# The arm IK hangs off a smoothed copy of the chest. Using the live chest made
 	# a loop: arm torque rocks the chest, which moves the arm targets, which
 	# rocks the chest again, and the arms buzzed.
@@ -335,6 +350,20 @@ func _apply_intent() -> void:
 			set_target_quat(prefix + "forearm", Quaternion.IDENTITY)
 			arm_ik[i] = {}
 		_arm_muscle(i)
+		_leg_muscle(i)
+
+
+## Weight shift leans both legs so the hips move over the feet in that
+## direction (feet stay flat), and a clamp bends that knee hard.
+func _set_leg_targets(shift: Vector2, clamp: Array) -> void:
+	# Hips go +x (right) / forward when the legs' bottoms swing the other way.
+	var a := Vector3(shift.y * weight_shift_deg, 0, -shift.x * weight_shift_deg)
+	for i in 2:
+		var prefix := "l_" if i == 0 else "r_"
+		var knee := -clamp_knee_deg if clamp[i] else 0.0
+		set_target(prefix + "thigh", Vector3(-a.x, 0, a.z) + Vector3(-knee * 0.5, 0, 0))
+		set_target(prefix + "shin", Vector3(knee, 0, 0))
+		set_target(prefix + "foot", Vector3(a.x, 0, -a.z) + Vector3(-knee * 0.5, 0, 0))
 
 
 ## The muscle push: a force on the hand toward intent.hand_effort, with the
@@ -348,6 +377,20 @@ func _arm_muscle(i: int) -> void:
 	var chest: RigidBody3D = parts.chest
 	hand.apply_central_force(f)
 	chest.apply_force(-f, chest.global_basis * _arms[i].shoulder)
+
+
+## Same muscle push for a leg: force on the foot, reaction on the hip.
+func _leg_muscle(i: int) -> void:
+	var e: Vector3 = intent.foot_effort[i].limit_length(1.0)
+	if e.length_squared() < 0.0001:
+		return
+	var f := e * foot_muscle_force * tension * stamina
+	var prefix := "l_" if i == 0 else "r_"
+	var foot: RigidBody3D = parts[prefix + "foot"]
+	var pelvis: RigidBody3D = parts.pelvis
+	var thigh: RigidBody3D = parts[prefix + "thigh"]
+	foot.apply_central_force(f)
+	pelvis.apply_force(-f, thigh.global_position + thigh.global_basis.y * 0.23 - pelvis.global_position)
 
 
 ## Two-bone IK on the hidden target skeleton: works out where the upper arm and
@@ -412,6 +455,8 @@ func _drive_joints() -> void:
 		var force: float = j.strength * strength_scale
 		if j.arm >= 0:
 			force *= clampf(intent.arm_tone[j.arm], 0.0, 1.0)
+		elif j.leg >= 0:
+			force *= clampf(intent.leg_tone[j.leg], 0.0, 1.0)
 		var jn: Generic6DOFJoint3D = j.joint
 		for axis in 3:
 			_set_axis_param(jn, axis, Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_TARGET_VELOCITY, -v[axis])
@@ -483,10 +528,15 @@ func _upright_assist() -> void:
 	assist = move_toward(assist, target, 4.0 / Engine.physics_ticks_per_second)
 	if assist <= 0.0:
 		return
+	# The chest is held at the torso lean the intent asks for, not bolt upright.
+	var hb := heading_basis()
+	var lean := deg_to_rad(clampf(intent.torso_lean, -1.0, 1.0) * lean_deg * 1.7)
+	var chest_up := Vector3.UP.rotated(hb.x, -lean)
 	for n in ["pelvis", "chest"]:
 		var b: RigidBody3D = parts[n]
 		var up := b.global_basis.y.normalized()
-		var axis := up.cross(Vector3.UP)
+		var want := chest_up if n == "chest" else Vector3.UP
+		var axis := up.cross(want)
 		var tilt := asin(clampf(axis.length(), 0.0, 1.0))
 		var torque := Vector3.ZERO
 		if tilt > 0.0001:
