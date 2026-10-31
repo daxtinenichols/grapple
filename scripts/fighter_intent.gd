@@ -43,6 +43,9 @@ var foot_effort: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
 var leg_tone: Array[float] = [1.0, 1.0]
 ## Clamp: bend that knee hard (hooks, closed guard, squeeze).
 var leg_clamp: Array[bool] = [false, false]
+## Put that leg back to standing straight (it otherwise holds the pose it was
+## last pushed into). Hold it true for one tick.
+var leg_stand: Array[bool] = [false, false]
 
 ## Reserved for ground mode (milestone 5). Not read yet.
 var hip_target := Vector3.ZERO
@@ -64,6 +67,7 @@ func reset() -> void:
 	foot_effort = [Vector3.ZERO, Vector3.ZERO]
 	leg_tone = [1.0, 1.0]
 	leg_clamp = [false, false]
+	leg_stand = [false, false]
 	tension = 0.0
 	hip_active = false
 	foot_active = [false, false]

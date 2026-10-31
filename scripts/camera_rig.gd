@@ -1,7 +1,7 @@
 class_name CameraRig
 extends Camera3D
 
-## Fighter camera. First person: sits just in front of the head, looking where
+## Fighter camera (third person by default). First person: sits just in front of the head, looking where
 ## the chest faces and a little down so you see your hands; smoothed so the
 ## ragdoll's wobble doesn't shake it. Third person: eases along behind the
 ## fighter, turning with them; yaw_offset swings it around (D-pad, mouse with
@@ -9,7 +9,7 @@ extends Camera3D
 
 @export var target: Fighter
 @export var sensitivity := 0.005
-@export var distance := 3.2
+@export var distance := 2.4
 @export var min_distance := 1.4
 @export var max_distance := 7.0
 @export var min_pitch := -0.2
@@ -24,14 +24,14 @@ extends Camera3D
 ## How fast (1/s) the camera swings round when the fighter turns. Slow, so body
 ## wobble doesn't shake it.
 @export var turn_rate := 1.5
-@export var first_person := true
+@export var first_person := false
 ## First person: how far down (radians) the view tips from where the chest faces.
 @export var fp_look_down := 0.35
 ## First person: how fast (1/s) the view follows the head.
 @export var fp_follow_rate := 10.0
 
 var yaw := 0.0
-var pitch := 0.12
+var pitch := 0.3
 var _focus := Vector3(0, 0.9, 0)
 var _snap := true
 

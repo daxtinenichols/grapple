@@ -94,6 +94,9 @@ var _arms: Array[Dictionary] = []
 var arm_ik: Array[Dictionary] = [{}, {}]
 var _last_torso := Vector2.ZERO
 var _last_legs := [Vector2.ZERO, false, false]
+## Pose each leg holds when nothing is moving it: [thigh, shin, foot] joint targets.
+var _leg_hold: Array = [[Quaternion.IDENTITY, Quaternion.IDENTITY, Quaternion.IDENTITY],
+	[Quaternion.IDENTITY, Quaternion.IDENTITY, Quaternion.IDENTITY]]
 var _ik_chest := Quaternion.IDENTITY
 var _ik_chest_fresh := true
 
@@ -334,8 +337,19 @@ func _apply_intent() -> void:
 		# Forward lean is negative flex for the spine (positive tips it back).
 		set_target("abdomen", Vector3(-torso.y * lean_deg, -torso.x * turn_deg, 0))
 		set_target("chest", Vector3(-torso.y * lean_deg * 0.7, -torso.x * turn_deg, 0))
+	# A leg being pushed keeps its hold pose updated to wherever it is, so when
+	# the push stops (or the controller switches mode) the leg stays there.
+	var moved := false
+	for i in 2:
+		if intent.leg_stand[i]:
+			_leg_hold[i] = [Quaternion.IDENTITY, Quaternion.IDENTITY, Quaternion.IDENTITY]
+			moved = true
+		elif intent.foot_effort[i].length_squared() > 0.0001 or (_last_legs[1 + i] and not intent.leg_clamp[i]):
+			# Pushed, or a clamp just let go: hold it where it is now.
+			_leg_hold[i] = _current_leg_pose(i)
+			moved = true
 	var legs := [intent.weight_shift.limit_length(1.0), intent.leg_clamp[0], intent.leg_clamp[1]]
-	if legs != _last_legs:
+	if legs != _last_legs or moved:
 		_last_legs = legs
 		_set_leg_targets(legs[0], [legs[1], legs[2]])
 	# The arm IK hangs off a smoothed copy of the chest. Using the live chest made
@@ -359,17 +373,38 @@ func _apply_intent() -> void:
 		_leg_muscle(i)
 
 
-## Weight shift leans both legs so the hips move over the feet in that
-## direction (feet stay flat), and a clamp bends that knee hard.
+## The leg's joint rotations now, minus the weight-shift lean _set_leg_targets adds.
+func _current_leg_pose(i: int) -> Array:
+	var prefix := "l_" if i == 0 else "r_"
+	var lean := _shift_lean(_last_legs[0])
+	return [lean.inverse() * joint_rotation(_joint_by_name[prefix + "thigh"]),
+		joint_rotation(_joint_by_name[prefix + "shin"]),
+		joint_rotation(_joint_by_name[prefix + "foot"]) * lean]
+
+
+func _shift_lean(shift: Vector2) -> Quaternion:
+	var a := Vector3(shift.y * weight_shift_deg, 0, -shift.x * weight_shift_deg) * (PI / 180.0)
+	return Quaternion.from_euler(Vector3(-a.x, 0, a.z))
+
+
+## Each leg holds the pose it was left in (_leg_hold; standing straight to
+## start). Weight shift leans both legs on top of that so the hips move over
+## the feet (feet stay flat), and a clamp bends that knee hard.
 func _set_leg_targets(shift: Vector2, clamp: Array) -> void:
 	# Hips go +x (right) / forward when the legs' bottoms swing the other way.
-	var a := Vector3(shift.y * weight_shift_deg, 0, -shift.x * weight_shift_deg)
+	var lean := _shift_lean(shift)
 	for i in 2:
 		var prefix := "l_" if i == 0 else "r_"
-		var knee := -clamp_knee_deg if clamp[i] else 0.0
-		set_target(prefix + "thigh", Vector3(-a.x, 0, a.z) + Vector3(-knee * 0.5, 0, 0))
-		set_target(prefix + "shin", Vector3(knee, 0, 0))
-		set_target(prefix + "foot", Vector3(a.x, 0, -a.z) + Vector3(-knee * 0.5, 0, 0))
+		var hold: Array = _leg_hold[i]
+		if clamp[i]:
+			var knee := deg_to_rad(clamp_knee_deg)
+			set_target_quat(prefix + "thigh", lean * Quaternion(Vector3.RIGHT, knee * 0.5))
+			set_target_quat(prefix + "shin", Quaternion(Vector3.RIGHT, -knee))
+			set_target_quat(prefix + "foot", Quaternion(Vector3.RIGHT, knee * 0.5) * lean.inverse())
+		else:
+			set_target_quat(prefix + "thigh", lean * hold[0])
+			set_target_quat(prefix + "shin", hold[1])
+			set_target_quat(prefix + "foot", hold[2] * lean.inverse())
 
 
 ## The muscle push: a force on the hand toward intent.hand_effort, with the
