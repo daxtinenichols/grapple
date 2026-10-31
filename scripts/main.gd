@@ -13,6 +13,9 @@ var hud: Label
 var cam: CameraRig
 ## Gi model over the fighter (scenes workstream); see FighterSkin.
 var skin: FighterSkin
+## Grips between fighters and the training partner (AI workstream).
+var grips: GripSystem
+var partner: TrainingPartner
 
 
 func _ready() -> void:
@@ -41,6 +44,14 @@ func _build_world() -> void:
 	pad.camera = cam
 	add_child(pad)
 	_set_pad_mode(not Input.get_connected_joypads().is_empty())
+
+	grips = GripSystem.new()
+	grips.name = "Grips"
+	add_child(grips)
+	partner = TrainingPartner.new()
+	partner.name = "TrainingPartner"
+	partner.grips = grips
+	add_child(partner)
 
 	dev = DevKeys.new()
 	dev.name = "DevKeys"
@@ -73,6 +84,10 @@ func _spawn_fighter() -> void:
 	dev.clear_drill()
 	cam.target = fighter
 	cam.snap()
+	grips.clear()
+	grips.add_fighter(fighter)
+	partner.opponent = fighter
+	partner.respawn()
 
 
 ## Whichever device was touched last drives the fighter.

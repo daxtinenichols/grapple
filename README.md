@@ -137,3 +137,21 @@ The main game (F5) runs in the gym with the gi skin on the fighter. `scenes/matc
 - `tests/test_scene.gd`: headless checks (facing, no extra physics, skin follows parts, edge reset). `tests/screenshot_match.gd` saves screenshots (needs a window).
 
 Scene milestones: [x] 1. match scene · [ ] 2. camera (with movement) · [ ] 3. HUD · [x] 4. fighter look (first pass) · [ ] 5. match flow, menus, sound
+
+## Training partner and AI (workstream 3)
+The main game (F5) puts a training partner in a blue gi in front of you.
+
+| Input | Action |
+| --- | --- |
+| Y (controller) / P (keyboard) | Switch the partner between the dummy and the sparring AI |
+| LT / RT (or the held mouse buttons) | Close a hand. A closed hand that touches the partner grabs whatever it touches (sleeve, lapel, wrist, belt) |
+
+- **Dummy**: a semi-stiff ragdoll. Hands up in a loose guard, arms at 45% tone, half the normal standing assist, never grips back. Grab it and pull, push or drag it down. If it stays down 4 s it pops back up where it started.
+- **Spar**: an AI that writes the same `FighterIntent` you do (it never touches bodies, `Input` or forces; a test checks). It squares up, hand-fights for a sleeve and a lapel, strips your grips, then pulls, pushes, snaps you down, turns you and tries foot sweeps, backing off when its own balance goes. The HUD's bottom line shows what it is doing. Stepping is not in yet (movement milestone 3), so it fights from where it stands.
+- **Grips** (`scripts/grip_system.gd`, `GripSystem`): while `intent.grip[i]` is held and that hand touches another fighter, the hand grabs the spot it touches. A stiff spring (a bit of gi slack, `stiffness`, capped at `max_force` x stamina) pulls hand and spot together, equal and opposite. If the spot is pulled more than `break_stretch` (17 cm) from the hand the grip tears, and the trigger has to be let go and pressed again. A yellow ball marks each held grip. Read it with `holding(fighter, hand)`, `grips_on(fighter)` and the `grabbed` / `released(fighter, hand, torn)` signals.
+- `scripts/partner_ai.gd` (`PartnerAI`): the AI. Feel knobs: `reaction`, `hand_speed`, `arm_tone`, `aggression`, `grip_fighting`, `engage_range`, `dummy_arm_tone`.
+- `scripts/training_partner.gd` (`TrainingPartner`): spawns the partner 0.85 m in front of you, owns the mode switch, the get-back-up and the bottom HUD line. `remove()` takes it off the mat (the solo movement tests do this). `dummy_balance` sets how easily the dummy goes over.
+- `main.gd` adds a `GripSystem` and a `TrainingPartner` and respawns the partner whenever you respawn (R / Back).
+- `tests/test_partner.gd`: headless checks (grabbing, pulling, releasing, tearing, the get-back-up, the AI gets grips and moves you without falling over every round). `tests/screenshot_partner.gd` saves screenshots (needs a window).
+
+AI milestones: [x] 1. dummy partner and grips · [x] 2. standing sparring AI · [ ] 3. footwork (after movement M3) · [ ] 4. ground game and goals (after rules)

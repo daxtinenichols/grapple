@@ -276,6 +276,8 @@ func _fresh() -> Node3D:
 	await process_frame
 	var main: Node3D = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
+	# Solo checks: take the training partner off the mat.
+	main.partner.remove()
 	await physics_frame
 	return main
 
