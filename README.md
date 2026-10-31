@@ -126,7 +126,10 @@ per milestone. Movement owns `scripts/fighter.gd` and the intent contract; the o
 their own scripts. Record new intent fields, exposed values and signals in this README.
 
 ## Scene and fighter look (workstream 4)
-Open `scenes/match.tscn` and press F6 (Run Current Scene). `main.tscn` is unchanged.
+The main game (F5) runs in the gym with the gi skin on the fighter. `scenes/match.tscn` (F6) shows two skinned fighters in the gym with the mat-edge reset.
+
+- `scenes/gym.tscn` + `scripts/gym.gd` (`Gym`, extends `Arena`): a 16 x 14 m jiu jitsu gym around the competition square, with padded walls, ceiling lights, windows, a belt rack, a bench, kettlebells and a grappling dummy. Only the floor and the walls collide. The `Mat` body still collides over the middle 12 x 12 m (the size the movement tests are tuned on; a bigger Jolt box changed the ground contacts enough to fail a leg test), and `MatBorder` strips carry the rest.
+- `main.gd` loads the gym instead of building its own mat, adds a `FighterSkin` (head layer 19), and hides the fighter's own head while `cam.first_person` is on.
 
 - `scenes/arena.tscn` + `scripts/arena.gd` (`Arena`): an 8 x 8 m blue combat area inside a 2 m yellow safety border (`materials/mat.gdshader`), tile seams, start marks, lights, a floor, and `SpawnA` / `SpawnB` facing each other. `watch(fighter)` makes it emit `fighter_left_mat(fighter)` when the pelvis crosses the combat edge; `is_on_mat(point)` and `spawn_transform(i)` are there for the rules thread.
 - `scripts/fighter_skin.gd` (`FighterSkin`): a gi jacket, pants, belt, bare hands and feet, and a face with googly eyes, each piece following one ragdoll part. It adds no bodies, shapes or joints and never writes to the fighter; it only hides the ragdoll's own debug meshes. Colors are exports (`gi_color`, `belt_color`, `skin_tone`, `hair_color`). Each skin puts its head pieces on its own render layer (`head_layer`, 1-20, set before `attach`; the match uses 19 for A and 20 for B), so a first-person camera hides only its own head with `cam.cull_mask &= ~skin.head_layer_mask()`.
