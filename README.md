@@ -11,14 +11,14 @@ Click the game window to take the mouse (Esc gives it back). Until then the arms
 
 | Input | Action |
 | --- | --- |
-| Mouse | Move the hand targets in a plane in front of the chest. The lead hand sits on the cursor, the other follows at half the distance. |
-| Wheel | Reach: pull the hands in or push them out |
-| Left / right button (hold) | Close the left / right hand (grabs once grips exist) |
+| Hold left / right mouse button + move the mouse | Move the left / right arm the way the mouse moves on screen. Hold both to move both arms. A held button also closes that hand (grabbing comes with grips). Each hand stays where you leave it. |
+| Hold a button + wheel | Reach out / pull in that arm |
+| Mouse with no button held | Orbit the camera. Wheel zooms. |
 | Q / E | Turn the shoulders |
 | WASD | Weight shift (recorded in the intent; stepping comes in movement milestone 3) |
 | Ctrl (hold) | Tense up: joint motors get 1.8x stronger |
-| Tab | Swap the lead hand |
-| Shift / Space (hold) | Hips / legs focus (recorded; used from movement milestone 5). Hands keep their last targets. |
+| Tab | Swap the lead side |
+| Shift / Space (hold) | Hips / legs focus (recorded; used from movement milestone 5) |
 
 Dev keys: F small shove, G big shove, R reset, M reach drill (touch the three balls in order), J / L orbit the camera.
 
@@ -58,18 +58,21 @@ target, reachable point), and `heading_basis()` (yaw-only frame, -Z = facing).
 - [ ] 6. Two fighters and the core test
 - [ ] 7. Stamina economy
 
-Known limits: the arms are built raised forward (`arm_build_pose`) because Jolt's joint
-motors flip when driven ~90 degrees or more from the pose the joint was created in, so a
-fighter spawns with its arms up and drops them in the first fraction of a second. Hands
-reach well in front of the body up to a little above the shoulders; reaching overhead or
-tight against the chest is still off by 15 to 25 cm.
+Known limits: Jolt's joint motors misbehave when a joint is driven ~90 degrees or more
+from the pose it was created in (arms flailed overhead, bent elbows buzzed). So the arms
+are built half-raised with the elbow half-bent (`arm_build_pose`, `elbow_build_flex`) and
+their limits shifted to match; a fighter spawns with its arms up and drops them in the
+first fraction of a second. Reaches across a 75-point grid in front of the body land
+within 3.5 cm on average (13 cm worst). The arm IK follows a smoothed copy of the chest
+(`ik_chest_rate`) to stop a feedback buzz.
 
 ## Files
 - `scripts/fighter.gd`: builds the 15-part ragdoll, joint limits, joint motors, base, upright assist, and turns the intent into joint targets (arm IK).
 - `scripts/fighter_intent.gd`: the intent contract.
 - `scripts/player_input.gd`: mouse and keyboard to intent.
 - `scripts/dev_keys.gd`: shove, reset and the reach drill.
-- `scripts/main.gd`: arena, camera and HUD.
+- `scripts/main.gd`: arena and HUD.
+- `scripts/camera_rig.gd`: smoothed orbit camera (mouse with no button held, wheel zoom).
 - `scripts/debug_overlay.gd`: balance and intent overlay.
 - `tests/test_stand.gd`, `tests/test_controls.gd`: headless checks. Run `godot --headless --path . --script res://tests/<name>.gd`.
 - `tests/screenshot.gd`, `tests/screenshot_reach.gd`: save screenshots (need a window, not `--headless`).
@@ -77,7 +80,8 @@ tight against the chest is still off by 15 to 25 cm.
 ## Tuning knobs (Fighter inspector or top of fighter.gd)
 - `pose_gain`: how fast joints chase their target.
 - `elbow_pole`: where elbows point while reaching. `turn_deg`: how far Q/E twists. `max_tension`: Ctrl strength.
-- `PlayerInput`: `mouse_sensitivity`, `cursor_limit`, `reach_min` / `reach_max`.
+- `PlayerInput`: `mouse_sensitivity`, `offset_min` / `offset_max` (box the hands stay in), `anchor_rate`.
+- `CameraRig`: `sensitivity`, `distance`, `follow_rate`.
 - `upright_*`: the standing assist. Lower it for a wobblier, goofier fighter.
 - `assist_give_up_margin`: how far the center of mass can leave the base before the fighter is allowed to fall.
 - Per-joint `strength` and `lim` in the BODY / LIMB tables.

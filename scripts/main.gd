@@ -7,8 +7,7 @@ var player: PlayerInput
 var dev: DevKeys
 var overlay: DebugOverlay
 var hud: Label
-var cam: Camera3D
-var cam_yaw := 0.6
+var cam: CameraRig
 
 
 func _ready() -> void:
@@ -53,7 +52,8 @@ func _build_world() -> void:
 	mat.physics_material_override = pm
 	add_child(mat)
 
-	cam = Camera3D.new()
+	cam = CameraRig.new()
+	cam.name = "Camera"
 	add_child(cam)
 
 	overlay = DebugOverlay.new()
@@ -61,6 +61,7 @@ func _build_world() -> void:
 
 	player = PlayerInput.new()
 	player.name = "PlayerInput"
+	player.camera = cam
 	add_child(player)
 
 	dev = DevKeys.new()
@@ -86,23 +87,17 @@ func _spawn_fighter() -> void:
 	player.fighter = fighter
 	dev.fighter = fighter
 	dev.clear_drill()
+	cam.target = fighter
+	cam.snap()
 
 
-func _process(delta: float) -> void:
-	if Input.is_key_pressed(KEY_J):
-		cam_yaw -= delta * 1.5
-	if Input.is_key_pressed(KEY_L):
-		cam_yaw += delta * 1.5
+func _process(_delta: float) -> void:
 	if fighter and fighter.parts.has("pelvis"):
-		var focus: Vector3 = fighter.parts.pelvis.global_position
-		focus.y = 0.9
-		cam.global_position = focus + Vector3(sin(cam_yaw), 0.35, cos(cam_yaw)) * 3.2
-		cam.look_at(focus)
 		var it := fighter.intent
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-		hud.text = "%s\nmouse hands   wheel reach   L/R button close hand   Q/E turn   WASD weight   Ctrl tense   Tab swap lead   Shift hips   Space legs\nF shove   G big shove   R reset   M reach drill   J/L orbit camera   Esc free mouse\n\nfocus %s   lead %s   reach %.2f m   grips %s %s   weight (%.1f, %.1f)\nbase margin %.2f m   assist %.0f%%   tension %.1f   %s" % [
+		var arms := player.controlled()
+		hud.text = "%s\nhold left / right mouse + move: move that arm (both buttons: both arms)   + wheel: reach\nno button: mouse turns the camera, wheel zooms   Q/E turn   WASD weight   Ctrl tense   Tab swap lead   Shift hips   Space legs\nF shove   G big shove   R reset   M reach drill   Esc free mouse\n\nmoving %s   weight (%.1f, %.1f)   base margin %.2f m   assist %.0f%%   tension %.1f   %s" % [
 			"" if captured else ">>> click the window to take the mouse <<<",
-			FighterIntent.Focus.keys()[it.focus].to_lower(), "left" if it.lead == FighterIntent.LEFT else "right",
-			player.reach, "L" if it.grip[0] else "-", "R" if it.grip[1] else "-",
+			("both arms" if arms[0] and arms[1] else "left arm" if arms[0] else "right arm" if arms[1] else "camera"),
 			it.weight_shift.x, it.weight_shift.y,
 			fighter.base_margin, fighter.assist * 100.0, fighter.tension, dev.drill_status()]

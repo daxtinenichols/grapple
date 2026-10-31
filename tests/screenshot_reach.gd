@@ -17,7 +17,8 @@ func _run() -> void:
 	var f: Fighter = main.fighter
 	await _wait(1.0)
 	main.dev.start_drill()
-	var targets := PlayerInput.hand_targets(f, Vector2(0.15, 0.05), 0.5, FighterIntent.RIGHT)
+	var offsets: Array[Vector3] = [Vector3(-0.15, -0.1, -0.35), Vector3(0.2, 0.05, -0.5)]
+	var targets := PlayerInput.hand_targets(f, f.parts.chest.global_position, offsets)
 	for i in 2:
 		f.intent.hand_target[i] = targets[i]
 		f.intent.hand_active[i] = true

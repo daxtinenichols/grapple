@@ -3,9 +3,11 @@ extends Node
 
 ## Fills a Fighter's intent from mouse and keyboard. Click the game window to
 ## capture the mouse, Esc to release it.
-##   Mouse: move the hand targets in a plane in front of the chest (lead hand follows closely)
-##   Wheel: reach (pull in / extend)    Left / right button: close left / right hand
-##   WASD: weight shift    Q / E: turn shoulders    Ctrl: tense    Tab: swap lead hand
+##   Hold left / right button + mouse: move the left / right arm (both buttons: both arms).
+##     The hand moves the way the mouse moves on screen. A held button also closes that hand.
+##   Hold a button + wheel: reach out / pull in that arm.
+##   No button: mouse orbits the camera, wheel zooms.
+##   WASD: weight shift    Q / E: turn shoulders    Ctrl: tense    Tab: swap lead side
 ##   Shift: hips focus    Space: legs focus
 
 ## Actions this script registers if project.godot doesn't define them already.
@@ -14,20 +16,25 @@ const BINDINGS := {
 	"turn_left": KEY_Q, "turn_right": KEY_E, "tense": KEY_CTRL, "swap_lead": KEY_TAB,
 	"focus_hips": KEY_SHIFT, "focus_legs": KEY_SPACE,
 }
+## Starting hand offsets from the chest, in the heading frame (x right, y up, -z forward).
+const GUARD: Array[Vector3] = [Vector3(-0.18, -0.15, -0.3), Vector3(0.18, -0.15, -0.3)]
 
 @export var fighter: Fighter
-## Metres the hand cursor moves per pixel of mouse motion.
-@export var mouse_sensitivity := 0.0022
-## Hand plane limits, metres from the chest: x sideways, y up/down.
-@export var cursor_limit := Vector2(0.55, 0.45)
-@export var reach_min := 0.12
-@export var reach_max := 0.65
+@export var camera: CameraRig
+## Metres a hand moves per pixel of mouse motion.
+@export var mouse_sensitivity := 0.002
+## Box the hand offsets stay in, metres from the chest: x sideways, y up/down, z forward.
+@export var offset_min := Vector3(-0.6, -0.6, -0.65)
+@export var offset_max := Vector3(0.6, 0.4, -0.08)
 @export var reach_step := 0.04
+## How fast (1/s) the hand frame follows the chest. Lower keeps hands steadier
+## while the body sways.
+@export var anchor_rate := 8.0
 
-## x right, y up, in the hand plane.
-var cursor := Vector2(0.0, -0.1)
-## How far in front of the chest the lead hand sits.
-var reach := 0.35
+## Per-hand offset from the chest in the heading frame.
+var hand_offset: Array[Vector3] = GUARD.duplicate()
+var _anchor := Vector3.ZERO
+var _anchor_fighter: Fighter
 
 
 func _ready() -> void:
@@ -41,29 +48,68 @@ func _ready() -> void:
 			InputMap.action_add_event(action, ev)
 
 
+## Arms under mouse control right now: [left, right].
+func controlled() -> Array[bool]:
+	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	return [captured and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT),
+		captured and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)]
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-	if event is InputEventMouseButton and event.pressed:
-		if not captured:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-			get_viewport().set_input_as_handled()
-			return
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			reach = minf(reach + reach_step, reach_max)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			reach = maxf(reach - reach_step, reach_min)
-	elif event is InputEventMouseMotion and captured:
-		move_cursor(event.relative)
-	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+	if event is InputEventMouseButton and event.pressed and not captured:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		return
+	if not captured:
+		return
+	var arms := controlled()
+	var any_arm: bool = arms[0] or arms[1]
+	if event is InputEventMouseMotion:
+		if any_arm:
+			move_hands(arms, event.relative)
+		elif camera:
+			camera.orbit(event.relative)
+	elif event is InputEventMouseButton and event.pressed:
+		var step := 0.0
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			step = 1.0
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			step = -1.0
+		if step != 0.0:
+			if any_arm:
+				for i in 2:
+					if arms[i]:
+						_set_offset(i, hand_offset[i] + Vector3(0, 0, -step * reach_step))
+			elif camera:
+				camera.zoom(step)
 
 
-func move_cursor(pixels: Vector2) -> void:
-	cursor += Vector2(pixels.x, -pixels.y) * mouse_sensitivity
-	cursor = cursor.clamp(-cursor_limit, cursor_limit)
+## Moves the chosen hands the way the mouse moved on screen: right on screen is
+## the camera's right, up is up.
+func move_hands(arms: Array[bool], pixels: Vector2) -> void:
+	if not is_instance_valid(fighter) or not fighter.parts.has("chest"):
+		return
+	var right := Vector3.RIGHT
+	if camera:
+		right = camera.global_basis.x
+		right.y = 0.0
+		right = right.normalized()
+	var world := (right * pixels.x - Vector3.UP * pixels.y) * mouse_sensitivity
+	var local := fighter.heading_basis().inverse() * world
+	for i in 2:
+		if arms[i]:
+			_set_offset(i, hand_offset[i] + local)
 
 
-func _physics_process(_delta: float) -> void:
+func _set_offset(i: int, v: Vector3) -> void:
+	hand_offset[i] = v.clamp(offset_min, offset_max)
+
+
+func _physics_process(delta: float) -> void:
 	if not is_instance_valid(fighter) or not fighter.parts.has("chest"):
 		return
 	var it := fighter.intent
@@ -78,35 +124,27 @@ func _physics_process(_delta: float) -> void:
 	it.tension = 1.0 if Input.is_action_pressed("tense") else 0.0
 	it.turn = Input.get_axis("turn_left", "turn_right")
 	it.weight_shift = Input.get_vector("move_left", "move_right", "move_back", "move_forward")
+	it.grip = controlled()
 
+	# Smooth the chest position the hands hang off, so body sway doesn't feed
+	# straight back into the arms.
+	var chest: Vector3 = fighter.parts.chest.global_position
+	if _anchor_fighter != fighter:
+		_anchor_fighter = fighter
+		_anchor = chest
+		hand_offset = GUARD.duplicate()
+	_anchor = _anchor.lerp(chest, 1.0 - exp(-anchor_rate * delta))
+
+	# Arms hang until you take the mouse, then each hand holds where you left it.
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-	it.grip[FighterIntent.LEFT] = captured and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	it.grip[FighterIntent.RIGHT] = captured and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
-
-	# Arms hang until you take the mouse. Hands keep their last targets while
-	# another group is in focus.
+	var targets := hand_targets(fighter, _anchor, hand_offset)
 	for i in 2:
-		it.hand_active[i] = captured and it.hand_active[i]
-	if captured and it.focus == FighterIntent.Focus.HANDS:
-		var targets := hand_targets(fighter, cursor, reach, it.lead)
-		for i in 2:
-			it.hand_target[i] = targets[i]
-			it.hand_active[i] = true
+		it.hand_target[i] = targets[i]
+		it.hand_active[i] = captured
 
 
-## World targets for both hands from a cursor in the plane in front of the chest.
-## The lead hand sits on the cursor; the other hand follows at half the distance,
-## closer to the body, on its own side.
-static func hand_targets(f: Fighter, cur: Vector2, depth: float, lead: int) -> Array[Vector3]:
+## World hand targets from per-hand offsets in the fighter's heading frame.
+static func hand_targets(f: Fighter, origin: Vector3, offsets: Array[Vector3]) -> Array[Vector3]:
 	var hb := f.heading_basis()
-	var origin: Vector3 = f.parts.chest.global_position
-	var out: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
-	for i in 2:
-		var side := -1.0 if i == FighterIntent.LEFT else 1.0
-		var p: Vector3
-		if i == lead:
-			p = Vector3(cur.x + side * 0.06, cur.y, -depth)
-		else:
-			p = Vector3(side * 0.2 + cur.x * 0.45, cur.y * 0.5 - 0.05, -depth * 0.65)
-		out[i] = origin + hb * p
+	var out: Array[Vector3] = [origin + hb * offsets[0], origin + hb * offsets[1]]
 	return out

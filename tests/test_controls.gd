@@ -4,7 +4,8 @@ extends SceneTree
 ##   godot --headless --path . --script res://tests/test_controls.gd
 ## 1. Fighter never reads Input, 2. tension comes through the intent,
 ## 3. Q/E turn twists the chest, 4. the hands touch three drill balls in a row
-## without the fighter falling, 5. PlayerInput's cursor moves the lead hand target.
+## without the fighter falling, 5. mouse buttons pick which arm the mouse moves,
+## 6. the arms stay calm while holding a guard.
 
 var failures := 0
 
@@ -58,12 +59,35 @@ func _run() -> void:
 	_check("still standing after the drill", f.parts.head.global_position.y > 1.5 and not f.has_fallen,
 		"head y %.2f" % f.parts.head.global_position.y)
 
-	# PlayerInput: moving the mouse right moves the lead (right) hand target right.
-	var before := PlayerInput.hand_targets(f, p.cursor, p.reach, FighterIntent.RIGHT)[1]
-	p.move_cursor(Vector2(100, 0))
-	var after := PlayerInput.hand_targets(f, p.cursor, p.reach, FighterIntent.RIGHT)[1]
-	var dx := (f.heading_basis().inverse() * (after - before)).x
-	_check("mouse right moves lead hand right", dx > 0.15, "moved %.2f m" % dx)
+	# Arms held out in a guard must not buzz (the build pose once made them shake).
+	var guard := PlayerInput.hand_targets(f, f.parts.chest.global_position, PlayerInput.GUARD)
+	for i in 2:
+		f.intent.hand_target[i] = guard[i]
+		f.intent.hand_active[i] = true
+	await _wait(1.5)
+	var hv := 0.0
+	var n := 0
+	for k in 240:
+		await physics_frame
+		hv += f.parts.l_hand.linear_velocity.length_squared() + f.parts.r_hand.linear_velocity.length_squared()
+		n += 2
+	_check("hands steady in guard", sqrt(hv / n) < 0.35, "hand speed rms %.2f m/s" % sqrt(hv / n))
+
+	# PlayerInput: with only the right button held, moving the mouse right on
+	# screen moves the right hand right (camera behind the fighter) and leaves the left alone.
+	p.fighter = f
+	main.cam.yaw = 0.0
+	await process_frame
+	await process_frame
+	var l0 := p.hand_offset[FighterIntent.LEFT]
+	var r0 := p.hand_offset[FighterIntent.RIGHT]
+	p.move_hands([false, true], Vector2(100, 0))
+	var dx := p.hand_offset[FighterIntent.RIGHT].x - r0.x
+	_check("right button + mouse right moves the right hand right", dx > 0.15, "moved %.2f m" % dx)
+	_check("left hand stays put", p.hand_offset[FighterIntent.LEFT] == l0, "")
+	p.move_hands([true, true], Vector2(0, -100))
+	_check("both buttons + mouse up raise both hands",
+		p.hand_offset[0].y > l0.y + 0.15 and p.hand_offset[1].y > r0.y + 0.15, "")
 
 	print("FAILURES: ", failures)
 	quit(failures)

@@ -14,8 +14,12 @@ signal fell
 @export var max_tension := 1.8
 ## How far (degrees) Q/E twists the abdomen and the chest each.
 @export var turn_deg := 25.0
+## How fast (1/s) the arm IK's copy of the chest follows the real chest.
+@export var ik_chest_rate := 4.0
 ## Arm pose (degrees: flex, twist, out) the arms are built in; see _build.
-@export var arm_build_pose := Vector3(50, 0, 25)
+@export var arm_build_pose := Vector3(50, 0, 0)
+## Elbow bend (degrees) the arms are built with; see _build.
+@export var elbow_build_flex := 60.0
 ## Where an elbow points while reaching, in the chest frame (x is mirrored per side).
 @export var elbow_pole := Vector3(0.5, -1.0, 0.3)
 ## 0..1, scales strength. Drained by later milestones.
@@ -79,6 +83,8 @@ var _arms: Array[Dictionary] = []
 ## The hidden target skeleton for each arm, for the overlay: shoulder, elbow, hand target.
 var arm_ik: Array[Dictionary] = [{}, {}]
 var _last_turn := 0.0
+var _ik_chest := Quaternion.IDENTITY
+var _ik_chest_fresh := true
 
 
 func _ready() -> void:
@@ -115,22 +121,30 @@ func _build() -> void:
 			c["side"] = side
 			defs.append(c)
 
-	# Arms are built raised forward and out (arm_build_pose), not hanging: Jolt's
-	# joint motors misbehave far (~90 deg+) from the pose a joint was created in,
-	# so the joint's zero sits in the middle of the reach range. Targets still
-	# use hanging = identity, and limits stay written for a hanging arm.
+	# Arms are built half-raised with the elbow half-bent (arm_build_pose,
+	# elbow_build_flex), not hanging straight: Jolt's joint motors misbehave
+	# (~90 deg+) away from the pose a joint was created in, so each joint's zero
+	# sits in the middle of its working range. Targets still use the hanging,
+	# straight arm as identity, and limits stay written for it.
 	for d in defs:
 		d["rot"] = Basis.IDENTITY
 		if d.side != 0 and d.name.substr(2) in ["upper_arm", "forearm", "hand"]:
 			var e := arm_build_pose
 			var r := Basis.from_euler(Vector3(e.x, e.y * d.side, e.z * d.side) * (PI / 180.0))
 			var shoulder: Vector3 = Vector3(LIMB[0].joint.x * d.side, LIMB[0].joint.y, LIMB[0].joint.z)
-			d.rot = r
-			d.pos = shoulder + r * (d.pos - shoulder)
+			var elbow: Vector3 = Vector3(LIMB[1].joint.x * d.side, LIMB[1].joint.y, LIMB[1].joint.z)
+			var bend := Basis(Vector3.RIGHT, deg_to_rad(elbow_build_flex))
 			if d.name.ends_with("upper_arm"):
+				d.rot = r
+				d.pos = shoulder + r * (d.pos - shoulder)
 				d["build_offset"] = e
 			else:
-				d.joint = shoulder + r * (d.joint - shoulder)
+				var elbow_now := shoulder + r * (elbow - shoulder)
+				d.rot = r * bend
+				d.pos = elbow_now + d.rot * (d.pos - elbow)
+				d.joint = elbow_now + d.rot * (d.joint - elbow)
+				if d.name.ends_with("forearm"):
+					d["build_offset"] = Vector3(elbow_build_flex, 0, 0)
 	var rot_of := {}
 	for d in defs:
 		rot_of[d.name] = d.rot
@@ -299,6 +313,13 @@ func _apply_intent() -> void:
 		_last_turn = turn
 		set_target("abdomen", Vector3(0, -turn * turn_deg, 0))
 		set_target("chest", Vector3(0, -turn * turn_deg, 0))
+	# The arm IK hangs off a smoothed copy of the chest. Using the live chest made
+	# a loop: arm torque rocks the chest, which moves the arm targets, which
+	# rocks the chest again, and the arms buzzed.
+	var chest_q: Quaternion = parts.chest.global_basis.get_rotation_quaternion()
+	var k := 1.0 - exp(-ik_chest_rate / Engine.physics_ticks_per_second)
+	_ik_chest = chest_q if _ik_chest_fresh else _ik_chest.slerp(chest_q, k)
+	_ik_chest_fresh = false
 	for i in 2:
 		var prefix: String = _arms[i].prefix
 		if intent.hand_active[i]:
@@ -318,8 +339,8 @@ func _solve_arm(i: int, target: Vector3) -> void:
 	var arm := _arms[i]
 	var side := -1.0 if i == FighterIntent.LEFT else 1.0
 	var chest: RigidBody3D = parts.chest
-	var cb := chest.global_basis.orthonormalized()
-	var s: Vector3 = chest.global_transform * arm.shoulder
+	var cb := Basis(_ik_chest)
+	var s: Vector3 = chest.global_position + cb * arm.shoulder
 	var l1: float = arm.upper
 	var l2: float = arm.lower
 	var to_t := target - s
