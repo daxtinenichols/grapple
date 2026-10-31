@@ -4,7 +4,7 @@ extends Node3D
 ## Leaving the combat area resets both fighters to their spawn points.
 ## Dev keys: F small shove, G big shove (on fighter A, away from the camera),
 ## R reset, K skin / plain ragdoll, J / L orbit the camera.
-## The camera here is a plain viewer; the real camera lives with movement.
+## The J / L camera is a debug viewer; the main camera comes from movement.
 
 const SHOVE := 60.0
 const BIG_SHOVE := 220.0
