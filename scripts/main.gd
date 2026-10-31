@@ -1,12 +1,10 @@
 extends Node3D
 
-## Test arena for the standing ragdoll milestone.
-## F: shove, G: big shove, R: reset, hold Ctrl: tense up.
-
-const SHOVE := 60.0
-const BIG_SHOVE := 220.0
+## Test arena. Player controls live in PlayerInput, test keys in DevKeys.
 
 var fighter: Fighter
+var player: PlayerInput
+var dev: DevKeys
 var overlay: DebugOverlay
 var hud: Label
 var cam: Camera3D
@@ -61,6 +59,16 @@ func _build_world() -> void:
 	overlay = DebugOverlay.new()
 	add_child(overlay)
 
+	player = PlayerInput.new()
+	player.name = "PlayerInput"
+	add_child(player)
+
+	dev = DevKeys.new()
+	dev.name = "DevKeys"
+	dev.camera = cam
+	dev.reset_requested.connect(_spawn_fighter)
+	add_child(dev)
+
 	hud = Label.new()
 	hud.position = Vector2(16, 12)
 	var layer := CanvasLayer.new()
@@ -75,17 +83,9 @@ func _spawn_fighter() -> void:
 	fighter.name = "Fighter"
 	add_child(fighter)
 	overlay.fighter = fighter
-
-
-func _physics_process(_delta: float) -> void:
-	if Input.is_action_just_pressed("reset"):
-		_spawn_fighter()
-		return
-	fighter.tension = 1.8 if Input.is_action_pressed("tense") else 1.0
-	if Input.is_action_just_pressed("shove"):
-		fighter.shove(_shove_dir() * SHOVE)
-	if Input.is_action_just_pressed("big_shove"):
-		fighter.shove(_shove_dir() * BIG_SHOVE)
+	player.fighter = fighter
+	dev.fighter = fighter
+	dev.clear_drill()
 
 
 func _process(delta: float) -> void:
@@ -98,12 +98,11 @@ func _process(delta: float) -> void:
 		focus.y = 0.9
 		cam.global_position = focus + Vector3(sin(cam_yaw), 0.35, cos(cam_yaw)) * 3.2
 		cam.look_at(focus)
-		hud.text = "F shove   G big shove   R reset   hold Ctrl tense   J/L orbit\nbase margin %.2f m   assist %.0f%%   tension %.1f" % [
-			fighter.base_margin, fighter.assist * 100.0, fighter.tension]
-
-
-## Push away from the camera so the shove is easy to read.
-func _shove_dir() -> Vector3:
-	var d := -cam.global_basis.z
-	d.y = 0.0
-	return d.normalized()
+		var it := fighter.intent
+		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+		hud.text = "%s\nmouse hands   wheel reach   L/R button close hand   Q/E turn   WASD weight   Ctrl tense   Tab swap lead   Shift hips   Space legs\nF shove   G big shove   R reset   M reach drill   J/L orbit camera   Esc free mouse\n\nfocus %s   lead %s   reach %.2f m   grips %s %s   weight (%.1f, %.1f)\nbase margin %.2f m   assist %.0f%%   tension %.1f   %s" % [
+			"" if captured else ">>> click the window to take the mouse <<<",
+			FighterIntent.Focus.keys()[it.focus].to_lower(), "left" if it.lead == FighterIntent.LEFT else "right",
+			player.reach, "L" if it.grip[0] else "-", "R" if it.grip[1] else "-",
+			it.weight_shift.x, it.weight_shift.y,
+			fighter.base_margin, fighter.assist * 100.0, fighter.tension, dev.drill_status()]
