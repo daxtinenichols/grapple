@@ -1,0 +1,64 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/gym.gd" id="1"]
+[ext_resource type="Shader" path="res://materials/mat.gdshader" id="2"]
+
+[sub_resource type="Environment" id="env"]
+background_mode = 1
+background_color = Color(0.1, 0.1, 0.12, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.75, 0.74, 0.72, 1)
+ambient_light_energy = 0.6
+tonemap_mode = 4
+ssao_enabled = true
+ssao_radius = 0.6
+ssao_intensity = 1.4
+glow_enabled = true
+glow_intensity = 0.3
+
+[sub_resource type="BoxShape3D" id="mat_shape"]
+size = Vector3(12, 1, 12)
+
+[sub_resource type="ShaderMaterial" id="mat_material"]
+render_priority = 0
+shader = ExtResource("2")
+shader_parameter/combat_color = Color(0.16, 0.36, 0.64, 1)
+shader_parameter/safety_color = Color(0.3, 0.3, 0.33, 1)
+
+[sub_resource type="BoxMesh" id="mat_mesh"]
+material = SubResource("mat_material")
+size = Vector3(16, 0.1, 14)
+
+[sub_resource type="PhysicsMaterial" id="mat_physics"]
+friction = 1.0
+
+[node name="Gym" type="Node3D"]
+script = ExtResource("1")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("env")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.819152, -0.469846, 0.32899, 0, 0.573576, 0.819152, -0.573576, -0.67101, 0.469846, 0, 8, 0)
+light_color = Color(1, 0.96, 0.9, 1)
+light_energy = 0.55
+shadow_enabled = true
+shadow_blur = 2.0
+directional_shadow_max_distance = 25.0
+
+[node name="Mat" type="StaticBody3D" parent="."]
+physics_material_override = SubResource("mat_physics")
+
+[node name="Shape" type="CollisionShape3D" parent="Mat"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+shape = SubResource("mat_shape")
+
+[node name="Mesh" type="MeshInstance3D" parent="Mat"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+mesh = SubResource("mat_mesh")
+
+[node name="SpawnA" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.9)
+
+[node name="SpawnB" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -0.9)

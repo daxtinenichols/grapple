@@ -10,8 +10,28 @@ signal fell
 
 ## Motor gain: how fast (1/s) a joint tries to close its angle error.
 @export var pose_gain := 14.0
-## Multiplies every joint's strength. 1.0 is relaxed, Ctrl raises it.
-@export var tension := 1.0
+## Strength multiplier at full intent tension (Ctrl). Relaxed is 1.0.
+@export var max_tension := 1.8
+## How far (degrees) Q/E twists the abdomen and the chest each.
+@export var turn_deg := 25.0
+## How far (degrees) a full torso lean bends the abdomen (the chest bends 70% of it).
+@export var lean_deg := 15.0
+## How far (degrees) a full weight shift tilts the legs at the hips and ankles.
+@export var weight_shift_deg := 4.0
+## Knee bend (degrees) of a leg clamp. Kept under 90: see _build.
+@export var clamp_knee_deg := 85.0
+## Force (N) of a full foot_effort push.
+@export var foot_muscle_force := 150
+## Force (N) of a full hand_effort push.
+@export var hand_muscle_force := 170.0
+## How fast (1/s) the arm IK's copy of the chest follows the real chest.
+@export var ik_chest_rate := 4.0
+## Arm pose (degrees: flex, twist, out) the arms are built in; see _build.
+@export var arm_build_pose := Vector3(50, 0, 0)
+## Elbow bend (degrees) the arms are built with; see _build.
+@export var elbow_build_flex := 60.0
+## Where an elbow points while reaching, in the chest frame (x is mirrored per side).
+@export var elbow_pole := Vector3(0.5, -1.0, 0.3)
 ## 0..1, scales strength. Drained by later milestones.
 @export var stamina := 1.0
 ## Upright assist torque (Nm per rad) on pelvis and chest while standing.
@@ -49,6 +69,11 @@ const LIMB := [
 		"joint": Vector3(0.11, 0.08, 0), "lim": [[-45, 30], [-15, 15], [-20, 20]], "strength": 220.0},
 ]
 
+## Everything this fighter wants to do. Written by PlayerInput or the AI.
+var intent := FighterIntent.new()
+## Current strength multiplier, derived from intent.tension.
+var tension := 1.0
+
 ## name -> RigidBody3D
 var parts := {}
 ## Each entry: {joint, parent, child, target: Quaternion, strength}
@@ -61,6 +86,19 @@ var base_hull: PackedVector2Array = []
 var base_margin := 0.0
 var assist := 1.0
 var has_fallen := false
+## name -> entry in joints
+var _joint_by_name := {}
+## Arm chain per hand (index 0 left, 1 right): shoulder anchor in chest space, bone lengths.
+var _arms: Array[Dictionary] = []
+## The hidden target skeleton for each arm, for the overlay: shoulder, elbow, hand target.
+var arm_ik: Array[Dictionary] = [{}, {}]
+var _last_torso := Vector2.ZERO
+var _last_legs := [Vector2.ZERO, false, false]
+## Pose each leg holds when nothing is moving it: [thigh, shin, foot] joint targets.
+var _leg_hold: Array = [[Quaternion.IDENTITY, Quaternion.IDENTITY, Quaternion.IDENTITY],
+	[Quaternion.IDENTITY, Quaternion.IDENTITY, Quaternion.IDENTITY]]
+var _ik_chest := Quaternion.IDENTITY
+var _ik_chest_fresh := true
 
 
 func _ready() -> void:
@@ -69,6 +107,7 @@ func _ready() -> void:
 
 func _physics_process(_delta: float) -> void:
 	update_base()
+	_apply_intent()
 	_drive_joints()
 	_upright_assist()
 	if not has_fallen and parts.head.global_position.y < 0.9:
@@ -96,10 +135,38 @@ func _build() -> void:
 			c["side"] = side
 			defs.append(c)
 
+	# Arms are built half-raised with the elbow half-bent (arm_build_pose,
+	# elbow_build_flex), not hanging straight: Jolt's joint motors misbehave
+	# (~90 deg+) away from the pose a joint was created in, so each joint's zero
+	# sits in the middle of its working range. Targets still use the hanging,
+	# straight arm as identity, and limits stay written for it.
+	for d in defs:
+		d["rot"] = Basis.IDENTITY
+		if d.side != 0 and d.name.substr(2) in ["upper_arm", "forearm", "hand"]:
+			var e := arm_build_pose
+			var r := Basis.from_euler(Vector3(e.x, e.y * d.side, e.z * d.side) * (PI / 180.0))
+			var shoulder: Vector3 = Vector3(LIMB[0].joint.x * d.side, LIMB[0].joint.y, LIMB[0].joint.z)
+			var elbow: Vector3 = Vector3(LIMB[1].joint.x * d.side, LIMB[1].joint.y, LIMB[1].joint.z)
+			var bend := Basis(Vector3.RIGHT, deg_to_rad(elbow_build_flex))
+			if d.name.ends_with("upper_arm"):
+				d.rot = r
+				d.pos = shoulder + r * (d.pos - shoulder)
+				d["build_offset"] = e
+			else:
+				var elbow_now := shoulder + r * (elbow - shoulder)
+				d.rot = r * bend
+				d.pos = elbow_now + d.rot * (d.pos - elbow)
+				d.joint = elbow_now + d.rot * (d.joint - elbow)
+				if d.name.ends_with("forearm"):
+					d["build_offset"] = Vector3(elbow_build_flex, 0, 0)
+	var rot_of := {}
+	for d in defs:
+		rot_of[d.name] = d.rot
+
 	for d in defs:
 		var body := _make_body(d)
 		add_child(body)
-		body.global_position = global_transform * d.pos
+		body.global_transform = global_transform * Transform3D(d.rot, d.pos)
 		parts[d.name] = body
 
 	# No self-collision for now: keeps the solver calm. Revisit for grappling.
@@ -112,7 +179,21 @@ func _build() -> void:
 	for d in defs:
 		if d.parent == "":
 			continue
-		_make_joint(d)
+		_make_joint(d, rot_of[d.parent])
+
+	var by_name := {}
+	for d in defs:
+		by_name[d.name] = d
+	for prefix in ["l_", "r_"]:
+		var shoulder: Vector3 = by_name[prefix + "upper_arm"].joint
+		var elbow: Vector3 = by_name[prefix + "forearm"].joint
+		var hand: Vector3 = by_name[prefix + "hand"].pos
+		_arms.append({
+			"shoulder": parts.chest.global_transform.affine_inverse() * (global_transform * shoulder),
+			"upper": shoulder.distance_to(elbow),
+			"lower": elbow.distance_to(hand),
+			"prefix": prefix,
+		})
 
 
 func _make_body(d: Dictionary) -> RigidBody3D:
@@ -160,13 +241,15 @@ func _make_body(d: Dictionary) -> RigidBody3D:
 	return body
 
 
-func _make_joint(d: Dictionary) -> void:
+## The joint frame lines up with the parent's build pose. Limits are measured from
+## the build pose, so a part built rotated (see arm_build_pose) has them shifted.
+func _make_joint(d: Dictionary, parent_rot: Basis) -> void:
 	var parent: RigidBody3D = parts[d.parent]
 	var child: RigidBody3D = parts[d.name]
 	var j := Generic6DOFJoint3D.new()
 	j.name = "joint_" + d.name
 	add_child(j)
-	j.global_transform = Transform3D(global_basis, global_transform * d.joint)
+	j.global_transform = Transform3D(global_basis * parent_rot, global_transform * d.joint)
 	j.node_a = j.get_path_to(parent)
 	j.node_b = j.get_path_to(child)
 
@@ -175,6 +258,9 @@ func _make_joint(d: Dictionary) -> void:
 	for axis in 3:
 		var lo: float = lim[axis][0]
 		var hi: float = lim[axis][1]
+		if d.has("build_offset"):
+			lo -= d.build_offset[axis]
+			hi -= d.build_offset[axis]
 		if side < 0 and axis > 0:
 			var t := lo
 			lo = -hi
@@ -186,10 +272,15 @@ func _make_joint(d: Dictionary) -> void:
 		_set_axis_flag(j, axis, Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, true)
 		_set_axis_flag(j, axis, Generic6DOFJoint3D.FLAG_ENABLE_MOTOR, true)
 
-	joints.append({
+	var entry := {
 		"joint": j, "parent": parent, "child": child, "name": d.name,
 		"target": Quaternion.IDENTITY, "strength": d.strength,
-	})
+		# Which arm this joint belongs to (0 left, 1 right), -1 if none.
+		"arm": (0 if d.side < 0 else 1) if d.name.substr(2) in ["upper_arm", "forearm", "hand"] else -1,
+		"leg": (0 if d.side < 0 else 1) if d.name.substr(2) in ["thigh", "shin", "foot"] else -1,
+	}
+	joints.append(entry)
+	_joint_by_name[d.name] = entry
 
 
 func _set_axis_param(j: Generic6DOFJoint3D, axis: int, p: int, v: float) -> void:
@@ -211,10 +302,178 @@ func _set_axis_flag(j: Generic6DOFJoint3D, axis: int, f: int, v: bool) -> void:
 ## Sets a joint's target as Euler degrees (x flex, y twist, z side) in the
 ## parent's frame. Side parts are given by full name, e.g. "l_forearm".
 func set_target(part: String, euler_deg: Vector3) -> void:
-	for j in joints:
-		if j.name == part:
-			j.target = Quaternion.from_euler(euler_deg * (PI / 180.0))
-			return
+	set_target_quat(part, Quaternion.from_euler(euler_deg * (PI / 180.0)))
+
+
+func set_target_quat(part: String, q: Quaternion) -> void:
+	if _joint_by_name.has(part):
+		_joint_by_name[part].target = q
+
+
+## The smoothed chest frame the arm IK works in. Controllers that place the hands
+## relative to the body should use it too, so they agree with the IK.
+func chest_frame() -> Basis:
+	return Basis(_ik_chest) if not _ik_chest_fresh else parts.chest.global_basis.orthonormalized()
+
+
+## Yaw-only frame of the fighter: -Z is where the pelvis faces, Y is world up.
+func heading_basis() -> Basis:
+	var f: Vector3 = -parts.pelvis.global_basis.z
+	f.y = 0.0
+	if f.length_squared() < 0.0001:
+		f = -global_basis.z
+	return Basis.looking_at(f.normalized(), Vector3.UP)
+
+
+# --- Intent ------------------------------------------------------------------
+
+func _apply_intent() -> void:
+	tension = lerpf(1.0, max_tension, clampf(intent.tension, 0.0, 1.0))
+	# Torso and idle arms are only touched when the intent changes, so poses set
+	# with set_target (tests, later stance code) survive while the intent is idle.
+	var torso := Vector2(clampf(intent.turn, -1.0, 1.0), clampf(intent.torso_lean, -1.0, 1.0))
+	if torso != _last_torso:
+		_last_torso = torso
+		# Forward lean is negative flex for the spine (positive tips it back).
+		set_target("abdomen", Vector3(-torso.y * lean_deg, -torso.x * turn_deg, 0))
+		set_target("chest", Vector3(-torso.y * lean_deg * 0.7, -torso.x * turn_deg, 0))
+	# A leg being pushed keeps its hold pose updated to wherever it is, so when
+	# the push stops (or the controller switches mode) the leg stays there.
+	var moved := false
+	for i in 2:
+		if intent.leg_stand[i]:
+			_leg_hold[i] = [Quaternion.IDENTITY, Quaternion.IDENTITY, Quaternion.IDENTITY]
+			moved = true
+		elif intent.foot_effort[i].length_squared() > 0.0001 or (_last_legs[1 + i] and not intent.leg_clamp[i]):
+			# Pushed, or a clamp just let go: hold it where it is now.
+			_leg_hold[i] = _current_leg_pose(i)
+			moved = true
+	var legs := [intent.weight_shift.limit_length(1.0), intent.leg_clamp[0], intent.leg_clamp[1]]
+	if legs != _last_legs or moved:
+		_last_legs = legs
+		_set_leg_targets(legs[0], [legs[1], legs[2]])
+	# The arm IK hangs off a smoothed copy of the chest. Using the live chest made
+	# a loop: arm torque rocks the chest, which moves the arm targets, which
+	# rocks the chest again, and the arms buzzed.
+	var chest_q: Quaternion = parts.chest.global_basis.get_rotation_quaternion()
+	var k := 1.0 - exp(-ik_chest_rate / Engine.physics_ticks_per_second)
+	_ik_chest = chest_q if _ik_chest_fresh else _ik_chest.slerp(chest_q, k)
+	_ik_chest_fresh = false
+	for i in 2:
+		var prefix: String = _arms[i].prefix
+		if intent.hand_active[i]:
+			_solve_arm(i, intent.hand_target[i])
+			set_target_quat(prefix + "hand", Quaternion.IDENTITY)
+		elif not arm_ik[i].is_empty():
+			# Just let go of the target: drop back to the hanging rest pose.
+			set_target_quat(prefix + "upper_arm", Quaternion.IDENTITY)
+			set_target_quat(prefix + "forearm", Quaternion.IDENTITY)
+			arm_ik[i] = {}
+		_arm_muscle(i)
+		_leg_muscle(i)
+
+
+## The leg's joint rotations now, minus the weight-shift lean _set_leg_targets adds.
+func _current_leg_pose(i: int) -> Array:
+	var prefix := "l_" if i == 0 else "r_"
+	var lean := _shift_lean(_last_legs[0])
+	return [lean.inverse() * joint_rotation(_joint_by_name[prefix + "thigh"]),
+		joint_rotation(_joint_by_name[prefix + "shin"]),
+		joint_rotation(_joint_by_name[prefix + "foot"]) * lean]
+
+
+func _shift_lean(shift: Vector2) -> Quaternion:
+	var a := Vector3(shift.y * weight_shift_deg, 0, -shift.x * weight_shift_deg) * (PI / 180.0)
+	return Quaternion.from_euler(Vector3(-a.x, 0, a.z))
+
+
+## Each leg holds the pose it was left in (_leg_hold; standing straight to
+## start). Weight shift leans both legs on top of that so the hips move over
+## the feet (feet stay flat), and a clamp bends that knee hard.
+func _set_leg_targets(shift: Vector2, clamp: Array) -> void:
+	# Hips go +x (right) / forward when the legs' bottoms swing the other way.
+	var lean := _shift_lean(shift)
+	for i in 2:
+		var prefix := "l_" if i == 0 else "r_"
+		var hold: Array = _leg_hold[i]
+		if clamp[i]:
+			var knee := deg_to_rad(clamp_knee_deg)
+			set_target_quat(prefix + "thigh", lean * Quaternion(Vector3.RIGHT, knee * 0.5))
+			set_target_quat(prefix + "shin", Quaternion(Vector3.RIGHT, -knee))
+			set_target_quat(prefix + "foot", Quaternion(Vector3.RIGHT, knee * 0.5) * lean.inverse())
+		else:
+			set_target_quat(prefix + "thigh", lean * hold[0])
+			set_target_quat(prefix + "shin", hold[1])
+			set_target_quat(prefix + "foot", hold[2] * lean.inverse())
+
+
+## The muscle push: a force on the hand toward intent.hand_effort, with the
+## equal and opposite force on the shoulder so the body can't push itself along.
+func _arm_muscle(i: int) -> void:
+	var e: Vector3 = intent.hand_effort[i].limit_length(1.0)
+	if e.length_squared() < 0.0001:
+		return
+	var f := e * hand_muscle_force * tension * stamina
+	var hand: RigidBody3D = parts[_arms[i].prefix + "hand"]
+	var chest: RigidBody3D = parts.chest
+	hand.apply_central_force(f)
+	chest.apply_force(-f, chest.global_basis * _arms[i].shoulder)
+
+
+## Same muscle push for a leg: force on the foot, reaction on the hip.
+func _leg_muscle(i: int) -> void:
+	var e: Vector3 = intent.foot_effort[i].limit_length(1.0)
+	if e.length_squared() < 0.0001:
+		return
+	var f := e * foot_muscle_force * tension * stamina
+	var prefix := "l_" if i == 0 else "r_"
+	var foot: RigidBody3D = parts[prefix + "foot"]
+	var pelvis: RigidBody3D = parts.pelvis
+	var thigh: RigidBody3D = parts[prefix + "thigh"]
+	foot.apply_central_force(f)
+	pelvis.apply_force(-f, thigh.global_position + thigh.global_basis.y * 0.23 - pelvis.global_position)
+
+
+## Two-bone IK on the hidden target skeleton: works out where the upper arm and
+## forearm should point for the hand to reach `target`, anchored at the real
+## chest, and sets those as joint targets. The motors and physics do the rest.
+func _solve_arm(i: int, target: Vector3) -> void:
+	var arm := _arms[i]
+	var side := -1.0 if i == FighterIntent.LEFT else 1.0
+	var chest: RigidBody3D = parts.chest
+	var cb := Basis(_ik_chest)
+	var s: Vector3 = chest.global_position + cb * arm.shoulder
+	var l1: float = arm.upper
+	var l2: float = arm.lower
+	var to_t := target - s
+	var d := clampf(to_t.length(), 0.08, l1 + l2 - 0.005)
+	var u := to_t.normalized() if to_t.length() > 0.001 else -cb.y
+	var pole := cb * Vector3(elbow_pole.x * side, elbow_pole.y, elbow_pole.z)
+	var p_perp := pole - u * pole.dot(u)
+	if p_perp.length_squared() < 0.0001:
+		p_perp = cb.z - u * cb.z.dot(u)
+	p_perp = p_perp.normalized()
+
+	# Law of cosines: shoulder angle off the shoulder-target line, and elbow flex.
+	var a := acos(clampf((l1 * l1 + d * d - l2 * l2) / (2.0 * l1 * d), -1.0, 1.0))
+	var flex := PI - acos(clampf((l1 * l1 + l2 * l2 - d * d) / (2.0 * l1 * l2), -1.0, 1.0))
+	var reach_t := s + u * d
+
+	var upper_dir := (u * cos(a) + p_perp * sin(a)).normalized()
+	var e := s + upper_dir * l1
+
+	# Upper arm basis: local -Y runs down the bone, the forearm bends toward local -Z.
+	var bend := (reach_t - e).normalized()
+	bend = bend - upper_dir * bend.dot(upper_dir)
+	if bend.length_squared() < 0.0001:
+		bend = -p_perp
+	var y := -upper_dir
+	var z := -bend.normalized()
+	var upper := Basis(y.cross(z), y, z).orthonormalized()
+
+	set_target_quat(arm.prefix + "upper_arm", (cb.inverse() * upper).get_rotation_quaternion())
+	set_target_quat(arm.prefix + "forearm", Quaternion(Vector3.RIGHT, flex))
+	arm_ik[i] = {"shoulder": s, "elbow": e, "target": target, "reach": reach_t}
 
 
 ## Current rotation of a joint relative to its parent, in the parent frame.
@@ -235,6 +494,10 @@ func _drive_joints() -> void:
 		if angle > 0.0001:
 			v = err.get_axis() * angle * pose_gain
 		var force: float = j.strength * strength_scale
+		if j.arm >= 0:
+			force *= clampf(intent.arm_tone[j.arm], 0.0, 1.0)
+		elif j.leg >= 0:
+			force *= clampf(intent.leg_tone[j.leg], 0.0, 1.0)
 		var jn: Generic6DOFJoint3D = j.joint
 		for axis in 3:
 			_set_axis_param(jn, axis, Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_TARGET_VELOCITY, -v[axis])
@@ -306,10 +569,15 @@ func _upright_assist() -> void:
 	assist = move_toward(assist, target, 4.0 / Engine.physics_ticks_per_second)
 	if assist <= 0.0:
 		return
+	# The chest is held at the torso lean the intent asks for, not bolt upright.
+	var hb := heading_basis()
+	var lean := deg_to_rad(clampf(intent.torso_lean, -1.0, 1.0) * lean_deg * 1.7)
+	var chest_up := Vector3.UP.rotated(hb.x, -lean)
 	for n in ["pelvis", "chest"]:
 		var b: RigidBody3D = parts[n]
 		var up := b.global_basis.y.normalized()
-		var axis := up.cross(Vector3.UP)
+		var want := chest_up if n == "chest" else Vector3.UP
+		var axis := up.cross(want)
 		var tilt := asin(clampf(axis.length(), 0.0, 1.0))
 		var torque := Vector3.ZERO
 		if tilt > 0.0001:

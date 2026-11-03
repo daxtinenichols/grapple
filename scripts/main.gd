@@ -1,16 +1,18 @@
 extends Node3D
 
-## Test arena for the standing ragdoll milestone.
-## F: shove, G: big shove, R: reset, hold Ctrl: tense up.
-
-const SHOVE := 60.0
-const BIG_SHOVE := 220.0
+## Test arena. Player controls live in PlayerInput, test keys in DevKeys.
 
 var fighter: Fighter
+var player: PlayerInput
+var pad: PadInput
+## True while the controller drives the fighter, false for mouse and keyboard.
+var pad_mode := false
+var dev: DevKeys
 var overlay: DebugOverlay
 var hud: Label
-var cam: Camera3D
-var cam_yaw := 0.6
+var cam: CameraRig
+## Gi model over the fighter (scenes workstream); see FighterSkin.
+var skin: FighterSkin
 
 
 func _ready() -> void:
@@ -19,47 +21,32 @@ func _ready() -> void:
 
 
 func _build_world() -> void:
-	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.16, 0.17, 0.2)
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.6, 0.6, 0.65)
-	env.environment = e
-	add_child(env)
+	# The gym (scene workstream): mats, walls, lights. Its Mat body is the floor.
+	add_child(load("res://scenes/gym.tscn").instantiate())
 
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-55, 35, 0)
-	sun.shadow_enabled = true
-	add_child(sun)
-
-	var mat := StaticBody3D.new()
-	mat.name = "Mat"
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(12, 1, 12)
-	shape.shape = box
-	shape.position.y = -0.5
-	mat.add_child(shape)
-	var mesh := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(12, 0.1, 12)
-	mesh.mesh = bm
-	mesh.position.y = -0.05
-	var mm := StandardMaterial3D.new()
-	mm.albedo_color = Color(0.2, 0.42, 0.62)
-	mesh.material_override = mm
-	mat.add_child(mesh)
-	var pm := PhysicsMaterial.new()
-	pm.friction = 1.0
-	mat.physics_material_override = pm
-	add_child(mat)
-
-	cam = Camera3D.new()
+	cam = CameraRig.new()
+	cam.name = "Camera"
 	add_child(cam)
 
 	overlay = DebugOverlay.new()
 	add_child(overlay)
+
+	player = PlayerInput.new()
+	player.name = "PlayerInput"
+	player.camera = cam
+	add_child(player)
+
+	pad = PadInput.new()
+	pad.name = "PadInput"
+	pad.camera = cam
+	add_child(pad)
+	_set_pad_mode(not Input.get_connected_joypads().is_empty())
+
+	dev = DevKeys.new()
+	dev.name = "DevKeys"
+	dev.camera = cam
+	dev.reset_requested.connect(_spawn_fighter)
+	add_child(dev)
 
 	hud = Label.new()
 	hud.position = Vector2(16, 12)
@@ -74,36 +61,49 @@ func _spawn_fighter() -> void:
 	fighter = Fighter.new()
 	fighter.name = "Fighter"
 	add_child(fighter)
+	skin = FighterSkin.new()
+	skin.name = "Skin"
+	skin.head_layer = 19
+	add_child(skin)
+	skin.attach(fighter)
 	overlay.fighter = fighter
+	player.fighter = fighter
+	pad.fighter = fighter
+	dev.fighter = fighter
+	dev.clear_drill()
+	cam.target = fighter
+	cam.snap()
 
 
-func _physics_process(_delta: float) -> void:
-	if Input.is_action_just_pressed("reset"):
-		_spawn_fighter()
-		return
-	fighter.tension = 1.8 if Input.is_action_pressed("tense") else 1.0
-	if Input.is_action_just_pressed("shove"):
-		fighter.shove(_shove_dir() * SHOVE)
-	if Input.is_action_just_pressed("big_shove"):
-		fighter.shove(_shove_dir() * BIG_SHOVE)
+## Whichever device was touched last drives the fighter.
+func _input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.4):
+		_set_pad_mode(true)
+	elif event is InputEventMouseButton or (event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED):
+		_set_pad_mode(false)
 
 
-func _process(delta: float) -> void:
-	if Input.is_key_pressed(KEY_J):
-		cam_yaw -= delta * 1.5
-	if Input.is_key_pressed(KEY_L):
-		cam_yaw += delta * 1.5
+func _set_pad_mode(on: bool) -> void:
+	pad_mode = on
+	pad.set_physics_process(on)
+	player.set_physics_process(not on)
+
+
+func _process(_delta: float) -> void:
+	# In first person, hide our own head from our own camera.
+	if is_instance_valid(skin):
+		var head := skin.head_layer_mask()
+		cam.cull_mask = (cam.cull_mask & ~head) if cam.first_person else (cam.cull_mask | head)
 	if fighter and fighter.parts.has("pelvis"):
-		var focus: Vector3 = fighter.parts.pelvis.global_position
-		focus.y = 0.9
-		cam.global_position = focus + Vector3(sin(cam_yaw), 0.35, cos(cam_yaw)) * 3.2
-		cam.look_at(focus)
-		hud.text = "F shove   G big shove   R reset   hold Ctrl tense   J/L orbit\nbase margin %.2f m   assist %.0f%%   tension %.1f" % [
-			fighter.base_margin, fighter.assist * 100.0, fighter.tension]
-
-
-## Push away from the camera so the shove is easy to read.
-func _shove_dir() -> Vector3:
-	var d := -cam.global_basis.z
-	d.y = 0.0
-	return d.normalized()
+		var it := fighter.intent
+		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+		var arms := player.controlled()
+		var help := "controller: sticks move the hands (sideways, push / pull)   hold RB: body (weight, lean, turn)   hold LB: legs   both: hips + both legs   click a stick: reset it   LT/RT grip   A tense\nD-pad camera   Start first / third person   Back reset" if pad_mode else \
+			"%s\nhold left / right mouse + move: move that arm (both buttons: both arms)   + wheel: reach\nno button: mouse turns the camera, wheel zooms   Q/E turn   WASD weight   Ctrl tense" % [
+			"" if captured else ">>> click the window to take the mouse (or pick up the controller) <<<"]
+		hud.text = "%s\nF shove   G big shove   R reset   M reach drill   Esc free mouse\n\n%s   grips %s %s   weight (%.1f, %.1f)   base margin %.2f m   assist %.0f%%   tension %.1f   %s" % [
+			help,
+			("controller: " + PadInput.Mode.keys()[pad.mode].to_lower()) if pad_mode else ("moving both arms" if arms[0] and arms[1] else "moving left arm" if arms[0] else "moving right arm" if arms[1] else "moving camera"),
+			"L" if it.grip[0] else "-", "R" if it.grip[1] else "-",
+			it.weight_shift.x, it.weight_shift.y,
+			fighter.base_margin, fighter.assist * 100.0, fighter.tension, dev.drill_status()]
